@@ -1,8 +1,18 @@
-#coursemind - AI-Powered Course Generation Platform
+# CourseMind - AI-Powered Course Generation Platform
 
-![CourseMind Logo](https://i.postimg.cc/wBL9c9Vp/Gemini-Generated-Image-7fr1527fr1527fr1-Photoroom.png)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/MontaCoder/CourseMind)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D16.0.0-green.svg)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-18+-61dafb.svg)](https://reactjs.org/)
+
+<img src="https://i.postimg.cc/wBL9c9Vp/Gemini-Generated-Image-7fr1527fr1527fr1-Photoroom.png" alt="CourseMind Logo" width="200"/>
 
 CourseMind is an AI-first course creation workspace that transforms raw ideas into premium learning experiences in minutes. Built with cutting-edge AI technology, it enables educators, content creators, and organizations to craft studio-grade courses with narrative structure, multimedia assets, and instant assessments.
+
+## 📸 Screenshots
+
+![CourseMind Dashboard](res/screenshot.png)
+*CourseMind Dashboard - AI-powered course generation interface*
 
 ## ✨ Key Features
 
@@ -69,12 +79,12 @@ CourseMind is an AI-first course creation workspace that transforms raw ideas in
 ## 🏗️ Project Structure
 
 ```
-MindCourse/
+CourseMind/
 ├── public/                 # Static assets
 │   ├── favicon.ico
 │   ├── manifest.json
 │   └── ...
-├── server/                 # Backend server
+├── backend/                # Backend server
 │   └── server.js          # Express server with API routes
 ├── src/
 │   ├── components/        # Reusable React components
@@ -171,6 +181,136 @@ bun run dev
 ### Backend Scripts
 - `node server.js` - Start the Express server
 
+## 🚀 Deployment
+
+### Production Build
+
+1. Build the frontend:
+```bash
+npm run build
+```
+
+2. The built files will be in the `dist/` directory.
+
+### Environment Setup for Production
+
+Ensure your production environment has the following:
+
+- Node.js runtime
+- MongoDB database
+- Environment variables configured (see `.env` examples above)
+
+### Recommended Deployment Platforms
+
+- **Vercel** - For frontend deployment
+- **Railway** - For full-stack deployment
+- **Heroku** - For backend deployment
+- **AWS/DigitalOcean** - For custom deployments
+
+### Docker Deployment (Optional)
+
+If using Docker:
+
+```dockerfile
+# Dockerfile example
+FROM node:18-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+EXPOSE 5000
+CMD ["node", "backend/server.js"]
+```
+
+## 📚 API Documentation
+
+CourseMind provides a RESTful API for all core functionalities. The API base URL is `/api`.
+
+### Authentication Endpoints
+
+- `POST /api/signup` - User registration
+- `POST /api/signin` - User login
+- `POST /api/social` - Social authentication (Google/Facebook)
+- `POST /api/forgot` - Request password reset
+- `POST /api/reset-password` - Reset password with token
+
+### Course Management
+
+- `POST /api/generate` - Generate course content using AI
+- `POST /api/course` - Save a new course
+- `GET /api/courses` - Retrieve user's courses
+- `POST /api/update` - Update existing course
+- `POST /api/deletecourse` - Delete a course
+- `POST /api/finish` - Mark course as completed
+- `GET /api/shareable` - Get shareable courses
+
+### AI Features
+
+- `POST /api/prompt` - Send custom AI prompts
+- `POST /api/image` - Generate images
+- `POST /api/yt` - Search YouTube videos
+- `POST /api/transcript` - Get video transcripts
+
+### Payment & Subscription
+
+- `POST /api/paypal` - PayPal payment processing
+- `POST /api/stripe` - Stripe payment processing (if implemented)
+- `POST /api/flutterwave` - Flutterwave payment processing
+
+### User Management
+
+- `POST /api/profile` - Update user profile
+- `POST /api/data` - Get user data
+
+### Blog Management (Admin)
+
+- `POST /api/createblog` - Create blog post
+- `GET /api/getblogs` - Retrieve all blog posts
+- `POST /api/updateblogs` - Update blog post
+- `POST /api/deleteblogs` - Delete blog post
+
+### Other
+
+- `POST /api/sendcertificate` - Send course completion certificate
+- `POST /api/courseshared` - Share course functionality
+
+For detailed request/response formats, refer to the server.js file or use API testing tools like Postman.
+
+## 🧪 Testing
+
+### Running Tests
+
+Currently, the project does not have automated tests configured. To add testing:
+
+1. Install testing framework:
+```bash
+npm install --save-dev vitest @testing-library/react @testing-library/jest-dom
+```
+
+2. Add test scripts to `package.json`:
+```json
+"scripts": {
+  "test": "vitest",
+  "test:ui": "vitest --ui"
+}
+```
+
+3. Example test structure:
+```
+src/
+  components/
+    Button.test.tsx
+  __tests__/
+    utils.test.ts
+```
+
+### Manual Testing
+
+- Use the development server to test UI components
+- Test API endpoints using Postman or curl
+- Verify payment flows in staging environment
+- Test course generation with various inputs
+
 ## 🎯 Usage
 
 ### For Content Creators
@@ -212,6 +352,41 @@ CourseMind supports multiple payment gateways:
 CourseMind supports 23 languages for course localization:
 Arabic, Chinese, Dutch, English, French, German, Hindi, Italian, Japanese, Korean, Portuguese, Russian, Spanish, Swedish, Turkish, and more.
 
+## ❓ FAQ
+
+### General Questions
+
+**Q: What is CourseMind?**  
+A: CourseMind is an AI-powered platform that helps educators and content creators generate high-quality courses quickly using advanced AI technology.
+
+**Q: How does the AI course generation work?**  
+A: Simply input your course topic, and our AI analyzes the content to create structured modules, assessments, and multimedia assets automatically.
+
+**Q: Is CourseMind free?**  
+A: CourseMind offers a free tier with basic features. Premium plans start at $5/month with advanced AI capabilities.
+
+### Technical Questions
+
+**Q: What technologies does CourseMind use?**  
+A: Frontend: React, TypeScript, Vite, Tailwind CSS. Backend: Node.js, Express, MongoDB. AI: Google Generative AI.
+
+**Q: Can I self-host CourseMind?**  
+A: Yes, the codebase is available for self-hosting. Follow the installation instructions above.
+
+**Q: Does CourseMind support multiple languages?**  
+A: Yes, CourseMind supports 23 languages for course content localization.
+
+### Account & Billing
+
+**Q: What payment methods are accepted?**  
+A: We accept Stripe, PayPal, Paystack, and Flutterwave payments.
+
+**Q: Can I cancel my subscription anytime?**  
+A: Yes, you can cancel your subscription at any time. You'll retain access until the end of your billing period.
+
+**Q: Do you offer refunds?**  
+A: Please refer to our refund policy for details on eligibility and process.
+
 ## 🤝 Contributing
 
 We welcome contributions! Please follow these steps:
@@ -249,3 +424,26 @@ This project is proprietary software owned by MontaCoder.
 ---
 
 **CourseMind** - Revolutionizing online education with AI-powered course creation.
+
+## 🗺️ Roadmap
+
+### Upcoming Features
+- [ ] Mobile app development (React Native)
+- [ ] Advanced AI models integration
+- [ ] Real-time collaboration tools
+- [ ] Enhanced analytics dashboard
+- [ ] API rate limiting and optimization
+- [ ] Multi-tenant architecture
+- [ ] Integration with popular LMS platforms
+- [ ] Advanced customization options
+
+### Recent Updates
+- ✅ AI-powered course generation
+- ✅ Multi-language support
+- ✅ Payment gateway integrations
+- ✅ PWA implementation
+- ✅ Admin panel and blog management
+
+---
+
+**CourseMind** - Revolutionizing online education with AI-powered course creation. 🤖📚
