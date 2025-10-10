@@ -59,7 +59,7 @@ const Hero = () => {
 
             <div className="space-y-6 animate-on-scroll opacity-0">
               <h1 className="text-balance font-display text-4xl leading-tight text-foreground sm:text-5xl lg:text-[3.5rem]">
-                Craft premium learning experiences in minutes—not months
+                Craft premium learning experiences in minutes not months
               </h1>
               <p className="max-w-xl text-lg text-muted-foreground">
                 CourseMind turns raw ideas into studio-grade courses with narrative structure, multimedia assets, and instant assessments.
