@@ -23,10 +23,7 @@ app.use(bodyParser.json({ limit: '50mb' }));
 app.use(express.json({ limit: '50mb' }));
 
 // DATABASE CONNECTION
-mongoose.connect(config.mongoUri, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-}).then(() => {
+mongoose.connect(config.mongoUri).then(() => {
     console.log('✅ MongoDB connected successfully');
 }).catch((err) => {
     console.error('❌ MongoDB connection error:', err);
