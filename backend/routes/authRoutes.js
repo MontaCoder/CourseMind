@@ -32,7 +32,11 @@ router.post('/signup', validateRequired(['email', 'mName', 'password', 'type']),
         await newAdmin.save();
     }
 
-    ApiResponse.success(res, { userId: newUser._id }, 'Account created successfully');
+    // Remove password from response
+    const userResponse = newUser.toObject();
+    delete userResponse.password;
+
+    ApiResponse.success(res, { userId: newUser._id, user: userResponse }, 'Account created successfully');
 }));
 
 // SIGNIN
@@ -41,18 +45,29 @@ router.post('/signin', validateRequired(['email', 'password']), asyncHandler(asy
 
     const user = await User.findOne({ email });
 
-    if (!user || password !== user.password) {
+    if (!user) {
         return ApiResponse.error(res, 'Invalid email or password', HTTP_STATUS.UNAUTHORIZED);
     }
 
-    ApiResponse.success(res, { userData: user }, 'SignIn Successful');
+    // Use the comparePassword method
+    const isMatch = await user.comparePassword(password);
+    
+    if (!isMatch) {
+        return ApiResponse.error(res, 'Invalid email or password', HTTP_STATUS.UNAUTHORIZED);
+    }
+
+    // Remove password from response
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    ApiResponse.success(res, { userData: userResponse }, 'SignIn Successful');
 }));
 
 // SOCIAL LOGIN
 router.post('/social', validateRequired(['email', 'name']), asyncHandler(async (req, res) => {
     const { email, name } = req.body;
     const mName = name;
-    const password = '';
+    const password = crypto.randomBytes(20).toString('hex'); // Generate a random password for social login
     const type = USER_TYPES.FREE;
 
     let user = await User.findOne({ email });
@@ -69,7 +84,11 @@ router.post('/social', validateRequired(['email', 'name']), asyncHandler(async (
         }
     }
 
-    ApiResponse.success(res, { userData: user }, user ? 'SignIn Successful' : 'Account created successfully');
+    // Remove password from response
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    ApiResponse.success(res, { userData: userResponse }, user ? 'SignIn Successful' : 'Account created successfully');
 }));
 
 // FORGOT PASSWORD
@@ -108,12 +127,16 @@ router.post('/reset-password', validateRequired(['password', 'token']), asyncHan
         return ApiResponse.error(res, 'Invalid or expired token', HTTP_STATUS.BAD_REQUEST);
     }
 
-    user.password = password;
+    user.password = password; // This will be hashed automatically by the pre-save hook
     user.resetPasswordToken = null;
     user.resetPasswordExpires = null;
     await user.save();
 
-    ApiResponse.success(res, { email: user.email }, 'Password updated successfully');
+    // Remove password from response
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    ApiResponse.success(res, { email: user.email, user: userResponse }, 'Password updated successfully');
 }));
 
 // UPDATE PROFILE
@@ -122,12 +145,16 @@ router.post('/profile', validateRequired(['uid']), asyncHandler(async (req, res)
 
     const updateData = { email, mName };
     if (password) {
-        updateData.password = password;
+        updateData.password = password; // This will be hashed automatically by the pre-save hook
     }
 
-    await User.findOneAndUpdate({ _id: uid }, { $set: updateData });
+    const user = await User.findOneAndUpdate({ _id: uid }, { $set: updateData }, { new: true });
 
-    ApiResponse.success(res, {}, 'Profile Updated');
+    // Remove password from response
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    ApiResponse.success(res, { user: userResponse }, 'Profile Updated');
 }));
 
 // DELETE USER
@@ -149,4 +176,3 @@ router.post('/deleteuser', validateRequired(['userId']), asyncHandler(async (req
 }));
 
 export default router;
-

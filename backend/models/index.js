@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import bcrypt from 'bcrypt';
 
 // Admin Schema
 const adminSchema = new mongoose.Schema({
@@ -22,6 +23,26 @@ const userSchema = new mongoose.Schema({
     resetPasswordToken: { type: String, default: null },
     resetPasswordExpires: { type: Date, default: null },
 });
+
+// Hash password before saving
+userSchema.pre('save', async function(next) {
+    // Only hash the password if it's modified
+    if (!this.isModified('password')) return next();
+    
+    try {
+        // Generate salt and hash the password
+        const saltRounds = 12;
+        this.password = await bcrypt.hash(this.password, saltRounds);
+        next();
+    } catch (error) {
+        next(error);
+    }
+});
+
+// Add method to compare password
+userSchema.methods.comparePassword = async function(candidatePassword) {
+    return bcrypt.compare(candidatePassword, this.password);
+};
 
 // Course Schema
 const courseSchema = new mongoose.Schema({
@@ -102,4 +123,3 @@ export const Notes = mongoose.model('Notes', notesSchema);
 export const Exam = mongoose.model('Exams', examSchema);
 export const Lang = mongoose.model('Lang', langSchema);
 export const Blog = mongoose.model('Blog', blogSchema);
-
