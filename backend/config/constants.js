@@ -50,7 +50,7 @@ export const SUBSCRIPTION_EVENTS = {
     PAYMENT_COMPLETED: 'PAYMENT.SALE.COMPLETED'
 };
 
-export const AI_MODEL = 'gemini-flash-latest';
+export const AI_MODEL = 'gemini-2.5-flash';
 
 export const SAFETY_SETTINGS = [
     {
