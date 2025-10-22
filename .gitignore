@@ -10,12 +10,25 @@ dist/
 build/
 out/
 
-# Environment variables
+# Environment variables - NEVER commit these to version control
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Security files
+*.key
+*.pem
+*.p12
+*.pfx
+privates/
+certs/
+
+# API keys and secrets
+api-keys.txt
+secrets.txt
+credentials.json
 
 # IDE and editor files
 .vscode/
