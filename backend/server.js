@@ -2,9 +2,15 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import bodyParser from 'body-parser';
-import cors from 'cors';
 import { config } from './config/environment.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
+import { 
+    corsMiddleware, 
+    helmetMiddleware, 
+    mongoSanitizeMiddleware, 
+    validateContentType,
+    requestSizeLimit 
+} from './middleware/securityMiddleware.js';
 
 // ROUTE IMPORTS
 import authRoutes from './routes/authRoutes.js';
@@ -17,10 +23,16 @@ import emailRoutes from './routes/emailRoutes.js';
 // INITIALIZE APP
 const app = express();
 
-// MIDDLEWARE
-app.use(cors());
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(express.json({ limit: '50mb' }));
+// SECURITY MIDDLEWARE
+app.use(helmetMiddleware);
+app.use(corsMiddleware());
+app.use(mongoSanitizeMiddleware);
+app.use(validateContentType);
+
+// BODY PARSING MIDDLEWARE
+app.use(bodyParser.json({ limit: requestSizeLimit }));
+app.use(express.json({ limit: requestSizeLimit }));
+app.use(express.urlencoded({ extended: true, limit: requestSizeLimit }));
 
 // DATABASE CONNECTION
 mongoose.connect(config.mongoUri).then(() => {
