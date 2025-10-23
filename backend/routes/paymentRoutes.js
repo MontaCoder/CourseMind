@@ -9,17 +9,18 @@ import { emailTemplates } from '../utils/emailTemplates.js';
 import { config } from '../config/environment.js';
 import { validateRequired } from '../middleware/validation.js';
 import { PAYMENT_METHODS } from '../config/constants.js';
+import { authenticateToken } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
 // STRIPE PAYMENT
-router.post('/stripepayment', validateRequired(['planId']), asyncHandler(async (req, res) => {
+router.post('/stripepayment', authenticateToken, validateRequired(['planId']), asyncHandler(async (req, res) => {
     const { planId } = req.body;
     const result = await PaymentService.createStripeCheckout(planId);
     res.json(result);
 }));
 
-router.post('/stripedetails', validateRequired(['subscriberId', 'uid', 'plan']), asyncHandler(async (req, res) => {
+router.post('/stripedetails', authenticateToken, validateRequired(['subscriberId', 'uid', 'plan']), asyncHandler(async (req, res) => {
     const { subscriberId, uid, plan } = req.body;
 
     await SubscriptionService.activateUserSubscription(uid, plan);
@@ -28,7 +29,7 @@ router.post('/stripedetails', validateRequired(['subscriberId', 'uid', 'plan']),
     res.send(session);
 }));
 
-router.post('/stripecancel', validateRequired(['id', 'email']), asyncHandler(async (req, res) => {
+router.post('/stripecancel', authenticateToken, validateRequired(['id', 'email']), asyncHandler(async (req, res) => {
     const { id, email } = req.body;
 
     await PaymentService.cancelStripeSubscription(id);
@@ -50,7 +51,7 @@ router.post('/stripecancel', validateRequired(['id', 'email']), asyncHandler(asy
 }));
 
 // PAYPAL PAYMENT
-router.post('/paypal', validateRequired(['planId', 'email', 'name', 'lastName', 'post', 'address', 'country']), asyncHandler(async (req, res) => {
+router.post('/paypal', authenticateToken, validateRequired(['planId', 'email', 'name', 'lastName', 'post', 'address', 'country']), asyncHandler(async (req, res) => {
     const { planId, email, name, lastName, post, address, country, admin } = req.body;
 
     const session = await PaymentService.createPayPalSubscription(
@@ -60,7 +61,7 @@ router.post('/paypal', validateRequired(['planId', 'email', 'name', 'lastName', 
     res.send(session);
 }));
 
-router.post('/paypaldetails', validateRequired(['subscriberId', 'uid', 'plan']), asyncHandler(async (req, res) => {
+router.post('/paypaldetails', authenticateToken, validateRequired(['subscriberId', 'uid', 'plan']), asyncHandler(async (req, res) => {
     const { subscriberId, uid, plan } = req.body;
 
     await SubscriptionService.activateUserSubscription(uid, plan);
@@ -69,7 +70,7 @@ router.post('/paypaldetails', validateRequired(['subscriberId', 'uid', 'plan']),
     res.send(session);
 }));
 
-router.post('/paypalcancel', validateRequired(['id', 'email']), asyncHandler(async (req, res) => {
+router.post('/paypalcancel', authenticateToken, validateRequired(['id', 'email']), asyncHandler(async (req, res) => {
     const { id, email } = req.body;
 
     await PaymentService.cancelPayPalSubscription(id);
@@ -90,7 +91,7 @@ router.post('/paypalcancel', validateRequired(['id', 'email']), asyncHandler(asy
     ApiResponse.success(res, {}, '');
 }));
 
-router.post('/paypalupdate', validateRequired(['id', 'idPlan']), asyncHandler(async (req, res) => {
+router.post('/paypalupdate', authenticateToken, validateRequired(['id', 'idPlan']), asyncHandler(async (req, res) => {
     const { id, idPlan } = req.body;
 
     const session = await PaymentService.updatePayPalSubscription(id, idPlan);
@@ -98,7 +99,7 @@ router.post('/paypalupdate', validateRequired(['id', 'idPlan']), asyncHandler(as
     res.send(session);
 }));
 
-router.post('/paypalupdateuser', validateRequired(['id', 'mName', 'email', 'user', 'plan']), asyncHandler(async (req, res) => {
+router.post('/paypalupdateuser', authenticateToken, validateRequired(['id', 'mName', 'email', 'user', 'plan']), asyncHandler(async (req, res) => {
     const { id, mName, email, user, plan } = req.body;
 
     await Subscription.findOneAndUpdate({ subscription: id }, { $set: { plan } });
@@ -112,7 +113,7 @@ router.post('/paypalupdateuser', validateRequired(['id', 'mName', 'email', 'user
 }));
 
 // RAZORPAY PAYMENT
-router.post('/razorpaycreate', validateRequired(['plan', 'email', 'fullAddress']), asyncHandler(async (req, res) => {
+router.post('/razorpaycreate', authenticateToken, validateRequired(['plan', 'email', 'fullAddress']), asyncHandler(async (req, res) => {
     const { plan, email, fullAddress } = req.body;
 
     const result = await PaymentService.createRazorpaySubscription(plan, email, fullAddress);
@@ -120,7 +121,7 @@ router.post('/razorpaycreate', validateRequired(['plan', 'email', 'fullAddress']
     res.send(result);
 }));
 
-router.post('/razorapydetails', validateRequired(['subscriberId', 'uid', 'plan']), asyncHandler(async (req, res) => {
+router.post('/razorapydetails', authenticateToken, validateRequired(['subscriberId', 'uid', 'plan']), asyncHandler(async (req, res) => {
     const { subscriberId, uid, plan } = req.body;
 
     await SubscriptionService.activateUserSubscription(uid, plan);
@@ -129,7 +130,7 @@ router.post('/razorapydetails', validateRequired(['subscriberId', 'uid', 'plan']
     res.send(result);
 }));
 
-router.post('/razorapypending', validateRequired(['sub']), asyncHandler(async (req, res) => {
+router.post('/razorapypending', authenticateToken, validateRequired(['sub']), asyncHandler(async (req, res) => {
     const { sub } = req.body;
 
     const result = await PaymentService.getRazorpaySubscription(sub);
@@ -137,7 +138,7 @@ router.post('/razorapypending', validateRequired(['sub']), asyncHandler(async (r
     res.send(result);
 }));
 
-router.post('/razorpaycancel', validateRequired(['id', 'email']), asyncHandler(async (req, res) => {
+router.post('/razorpaycancel', authenticateToken, validateRequired(['id', 'email']), asyncHandler(async (req, res) => {
     const { id, email } = req.body;
 
     await PaymentService.cancelRazorpaySubscription(id);
@@ -159,7 +160,7 @@ router.post('/razorpaycancel', validateRequired(['id', 'email']), asyncHandler(a
 }));
 
 // PAYSTACK PAYMENT
-router.post('/paystackpayment', validateRequired(['planId', 'amountInZar', 'email']), asyncHandler(async (req, res) => {
+router.post('/paystackpayment', authenticateToken, validateRequired(['planId', 'amountInZar', 'email']), asyncHandler(async (req, res) => {
     const { planId, amountInZar, email } = req.body;
 
     const result = await PaymentService.createPaystackPayment(planId, amountInZar, email);
@@ -167,7 +168,7 @@ router.post('/paystackpayment', validateRequired(['planId', 'amountInZar', 'emai
     res.json(result);
 }));
 
-router.post('/paystackfetch', validateRequired(['email', 'uid', 'plan']), asyncHandler(async (req, res) => {
+router.post('/paystackfetch', authenticateToken, validateRequired(['email', 'uid', 'plan']), asyncHandler(async (req, res) => {
     const { email, uid, plan } = req.body;
 
     await SubscriptionService.activateUserSubscription(uid, plan);
@@ -180,7 +181,7 @@ router.post('/paystackfetch', validateRequired(['email', 'uid', 'plan']), asyncH
     res.json({ details });
 }));
 
-router.post('/paystackcancel', validateRequired(['code', 'token', 'email']), asyncHandler(async (req, res) => {
+router.post('/paystackcancel', authenticateToken, validateRequired(['code', 'token', 'email']), asyncHandler(async (req, res) => {
     const { code, token, email } = req.body;
 
     await PaymentService.cancelPaystackSubscription(code, token);
@@ -202,7 +203,7 @@ router.post('/paystackcancel', validateRequired(['code', 'token', 'email']), asy
 }));
 
 // FLUTTERWAVE PAYMENT
-router.post('/flutterdetails', validateRequired(['email', 'uid', 'plan']), asyncHandler(async (req, res) => {
+router.post('/flutterdetails', authenticateToken, validateRequired(['email', 'uid', 'plan']), asyncHandler(async (req, res) => {
     const { email, uid, plan } = req.body;
 
     await SubscriptionService.activateUserSubscription(uid, plan);
@@ -211,7 +212,7 @@ router.post('/flutterdetails', validateRequired(['email', 'uid', 'plan']), async
     res.send(result);
 }));
 
-router.post('/flutterwavecancel', validateRequired(['code', 'token', 'email']), asyncHandler(async (req, res) => {
+router.post('/flutterwavecancel', authenticateToken, validateRequired(['code', 'token', 'email']), asyncHandler(async (req, res) => {
     const { code, token, email } = req.body;
 
     const response = await PaymentService.cancelFlutterwaveSubscription(code);
@@ -237,7 +238,7 @@ router.post('/flutterwavecancel', validateRequired(['code', 'token', 'email']), 
 }));
 
 // SUBSCRIPTION DETAILS (MULTI-PROVIDER)
-router.post('/subscriptiondetail', validateRequired(['uid', 'email']), asyncHandler(async (req, res) => {
+router.post('/subscriptiondetail', authenticateToken, validateRequired(['uid', 'email']), asyncHandler(async (req, res) => {
     const { uid, email } = req.body;
 
     const userDetails = await Subscription.findOne({ user: uid });
@@ -273,7 +274,7 @@ router.post('/subscriptiondetail', validateRequired(['uid', 'email']), asyncHand
 }));
 
 // SEND RECEIPT
-router.post('/sendreceipt', validateRequired(['html', 'email', 'plan', 'subscriberId', 'user', 'method', 'subscription']), asyncHandler(async (req, res) => {
+router.post('/sendreceipt', authenticateToken, validateRequired(['html', 'email', 'plan', 'subscriberId', 'user', 'method', 'subscription']), asyncHandler(async (req, res) => {
     const { html, email, plan, subscriberId, user, method, subscription } = req.body;
 
     await SubscriptionService.createSubscription(user, subscription, subscriberId, plan, method);
@@ -284,7 +285,7 @@ router.post('/sendreceipt', validateRequired(['html', 'email', 'plan', 'subscrib
 }));
 
 // DOWNLOAD RECEIPT
-router.post('/downloadreceipt', validateRequired(['html', 'email']), asyncHandler(async (req, res) => {
+router.post('/downloadreceipt', authenticateToken, validateRequired(['html', 'email']), asyncHandler(async (req, res) => {
     const { html, email } = req.body;
 
     await sendEmail(email, 'Subscription Receipt', html);
