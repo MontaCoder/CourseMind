@@ -11,6 +11,7 @@ import { ArrowRight, Mail, Lock, AlertTriangle } from 'lucide-react';
 import { appName, facebookClientId, serverURL } from '@/constants';
 import Logo from '../res/logo.svg';
 import axios from 'axios';
+import { setToken } from '@/lib/apiClient';
 import { GoogleLogin } from '@react-oauth/google';
 import { jwtDecode, type JwtPayload } from "jwt-decode";
 import FacebookLogin from '@greatsumini/react-facebook-login';
@@ -71,6 +72,10 @@ const Login = () => {
       const postURL = serverURL + '/api/signin';
       const response = await axios.post(postURL, { email, password });
       if (response.data.success) {
+        // Store JWT token
+        if (response.data.token) {
+          setToken(response.data.token);
+        }
         sessionStorage.setItem('email', response.data.userData.email);
         sessionStorage.setItem('mName', response.data.userData.mName);
         sessionStorage.setItem('auth', 'true');
@@ -110,7 +115,10 @@ const Login = () => {
       const content = JSON.stringify(jsonData);
 
       const postURLs = serverURL + '/api/courseshared';
-      const responses = await axios.post(postURLs, { user, content, type, mainTopic });
+      const token = localStorage.getItem('authToken');
+      const responses = await axios.post(postURLs, { user, content, type, mainTopic }, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       if (responses.data.success) {
         sessionStorage.removeItem('shared');
         redirectHome();
@@ -211,6 +219,10 @@ const Login = () => {
                   const apiResponse = await axios.post<SocialAuthResponse>(postURL, { email, name });
                   const { data } = apiResponse;
                   if (data.success) {
+                    // Store JWT token
+                    if ((data as any).token) {
+                      setToken((data as any).token);
+                    }
                     toast({
                       title: "Login successful",
                       description: "Welcome back to " + appName,
@@ -269,6 +281,10 @@ const Login = () => {
                   const apiResponse = await axios.post<SocialAuthResponse>(postURL, { email, name });
                   const { data } = apiResponse;
                   if (data.success) {
+                    // Store JWT token
+                    if ((data as any).token) {
+                      setToken((data as any).token);
+                    }
                     toast({
                       title: "Login successful",
                       description: "Welcome back to " + appName,

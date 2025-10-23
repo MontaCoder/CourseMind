@@ -12,6 +12,7 @@ import { ArrowRight, Mail, Lock, User, AlertTriangle } from 'lucide-react';
 import { appLogo, appName, companyName, facebookClientId, serverURL, websiteURL } from '@/constants';
 import Logo from '../res/logo.svg';
 import axios from 'axios';
+import { setToken } from '@/lib/apiClient';
 import { GoogleLogin } from '@react-oauth/google';
 import { jwtDecode, type JwtPayload } from "jwt-decode";
 import FacebookLogin from '@greatsumini/react-facebook-login';
@@ -85,6 +86,10 @@ const Signup = () => {
 
       const response = await axios.post(postURL, { email, mName: name, password, type });
       if (response.data.success) {
+        // Store JWT token
+        if (response.data.token) {
+          setToken(response.data.token);
+        }
         sessionStorage.setItem('email', email);
         sessionStorage.setItem('mName', name);
         sessionStorage.setItem('auth', 'true');
@@ -289,6 +294,10 @@ const Signup = () => {
                   const apiResponse = await axios.post<SocialAuthResponse>(postURL, { email, name });
                   const { data } = apiResponse;
                   if (data.success) {
+                    // Store JWT token
+                    if ((data as any).token) {
+                      setToken((data as any).token);
+                    }
                     toast({
                       title: "Login successful",
                       description: "Welcome back to " + appName,
@@ -347,6 +356,10 @@ const Signup = () => {
                   const apiResponse = await axios.post<SocialAuthResponse>(postURL, { email, name });
                   const { data } = apiResponse;
                   if (data.success) {
+                    // Store JWT token
+                    if ((data as any).token) {
+                      setToken((data as any).token);
+                    }
                     toast({
                       title: "Login successful",
                       description: "Welcome back to " + appName,
