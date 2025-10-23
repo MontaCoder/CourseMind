@@ -26,6 +26,7 @@ import Logo from '../../res/logo.svg';
 import { DownloadIcon } from '@radix-ui/react-icons';
 import { useToast } from '@/hooks/use-toast';
 import axios from 'axios';
+import { getToken } from '@/lib/apiClient';
 
 const DashboardLayout = () => {
   const isMobile = useIsMobile();
@@ -41,11 +42,20 @@ const DashboardLayout = () => {
       window.location.href = websiteURL + '/login';
     }
     async function dashboardData() {
-      const postURL = serverURL + `/api/dashboard`;
-      const response = await axios.post(postURL);
-      sessionStorage.setItem('adminEmail', response.data.admin.email);
-      if (response.data.admin.email === sessionStorage.getItem('email')) {
-        setAdmin(true);
+      const postURL = serverURL + `/api/checkadmin`;
+      const token = getToken();
+      try {
+        const response = await axios.post(postURL, {}, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (response.data.admin && response.data.admin.email) {
+          sessionStorage.setItem('adminEmail', response.data.admin.email);
+          if (response.data.admin.email === sessionStorage.getItem('email')) {
+            setAdmin(true);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking admin status:', error);
       }
     }
     if (sessionStorage.getItem('adminEmail')) {
