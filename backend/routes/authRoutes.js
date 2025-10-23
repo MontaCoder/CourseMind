@@ -8,11 +8,13 @@ import { emailTemplates } from '../utils/emailTemplates.js';
 import { config } from '../config/environment.js';
 import { USER_TYPES, ADMIN_TYPES, HTTP_STATUS } from '../config/constants.js';
 import { validateRequired, validateEmailField } from '../middleware/validation.js';
+import { generateToken, authenticateToken } from '../middleware/authMiddleware.js';
+import { authLimiter } from '../middleware/securityMiddleware.js';
 
 const router = express.Router();
 
 // SIGNUP
-router.post('/signup', validateRequired(['email', 'mName', 'password', 'type']), validateEmailField, asyncHandler(async (req, res) => {
+router.post('/signup', authLimiter, validateRequired(['email', 'mName', 'password', 'type']), validateEmailField, asyncHandler(async (req, res) => {
     const { email, mName, password, type } = req.body;
 
     const estimate = await User.estimatedDocumentCount();
@@ -32,15 +34,18 @@ router.post('/signup', validateRequired(['email', 'mName', 'password', 'type']),
         await newAdmin.save();
     }
 
+    // Generate JWT token
+    const token = generateToken(newUser._id);
+    
     // Remove password from response
     const userResponse = newUser.toObject();
     delete userResponse.password;
 
-    ApiResponse.success(res, { userId: newUser._id, user: userResponse }, 'Account created successfully');
+    ApiResponse.success(res, { userId: newUser._id, user: userResponse, token }, 'Account created successfully');
 }));
 
 // SIGNIN
-router.post('/signin', validateRequired(['email', 'password']), asyncHandler(async (req, res) => {
+router.post('/signin', authLimiter, validateRequired(['email', 'password']), asyncHandler(async (req, res) => {
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
@@ -56,11 +61,14 @@ router.post('/signin', validateRequired(['email', 'password']), asyncHandler(asy
         return ApiResponse.error(res, 'Invalid email or password', HTTP_STATUS.UNAUTHORIZED);
     }
 
+    // Generate JWT token
+    const token = generateToken(user._id);
+    
     // Remove password from response
     const userResponse = user.toObject();
     delete userResponse.password;
 
-    ApiResponse.success(res, { userData: userResponse }, 'SignIn Successful');
+    ApiResponse.success(res, { userData: userResponse, token }, 'SignIn Successful');
 }));
 
 // SOCIAL LOGIN
@@ -84,11 +92,14 @@ router.post('/social', validateRequired(['email', 'name']), asyncHandler(async (
         }
     }
 
+    // Generate JWT token
+    const token = generateToken(user._id);
+    
     // Remove password from response
     const userResponse = user.toObject();
     delete userResponse.password;
 
-    ApiResponse.success(res, { userData: userResponse }, user ? 'SignIn Successful' : 'Account created successfully');
+    ApiResponse.success(res, { userData: userResponse, token }, user ? 'SignIn Successful' : 'Account created successfully');
 }));
 
 // FORGOT PASSWORD
@@ -140,7 +151,7 @@ router.post('/reset-password', validateRequired(['password', 'token']), asyncHan
 }));
 
 // UPDATE PROFILE
-router.post('/profile', validateRequired(['uid']), asyncHandler(async (req, res) => {
+router.post('/profile', authenticateToken, validateRequired(['uid']), asyncHandler(async (req, res) => {
     const { email, mName, password, uid } = req.body;
 
     const updateData = { email, mName };
@@ -158,7 +169,7 @@ router.post('/profile', validateRequired(['uid']), asyncHandler(async (req, res)
 }));
 
 // DELETE USER
-router.post('/deleteuser', validateRequired(['userId']), asyncHandler(async (req, res) => {
+router.post('/deleteuser', authenticateToken, validateRequired(['userId']), asyncHandler(async (req, res) => {
     const { userId } = req.body;
 
     const deletedUser = await User.findOneAndDelete({ _id: userId });
