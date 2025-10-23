@@ -6,6 +6,7 @@ import { Save } from 'lucide-react';
 import { MinimalTiptapEditor } from '../../minimal-tiptap'
 import { serverURL } from '@/constants';
 import axios from 'axios';
+import { getToken } from '@/lib/apiClient';
 import { toast } from '@/hooks/use-toast';
 import { Content } from '@tiptap/react'
 
@@ -16,7 +17,10 @@ const AdminPrivacy = () => {
   async function savePrivacy() {
     setIsLoading(true);
     const postURL = serverURL + '/api/saveadmin';
-    const response = await axios.post(postURL, { data: value, type: 'privacy' });
+    const token = getToken();
+    const response = await axios.post(postURL, { data: value, type: 'privacy' }, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
     if (response.data.success) {
       sessionStorage.setItem('privacy', '' + value);
       setIsLoading(false);

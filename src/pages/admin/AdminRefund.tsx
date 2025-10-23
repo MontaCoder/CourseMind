@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Save } from 'lucide-react';
 import { serverURL } from '@/constants';
 import axios from 'axios';
+import { getToken } from '@/lib/apiClient';
 import { toast } from '@/hooks/use-toast';
 import { MinimalTiptapEditor } from '../../minimal-tiptap'
 import { Content } from '@tiptap/react'
@@ -16,7 +17,10 @@ const AdminRefund = () => {
   async function saveRefund() {
     setIsLoading(true);
     const postURL = serverURL + '/api/saveadmin';
-    const response = await axios.post(postURL, { data: value, type: 'refund' });
+    const token = getToken();
+    const response = await axios.post(postURL, { data: value, type: 'refund' }, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
     if (response.data.success) {
       sessionStorage.setItem('refund', '' + value);
       setIsLoading(false);

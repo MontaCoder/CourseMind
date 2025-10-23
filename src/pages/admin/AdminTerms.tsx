@@ -8,6 +8,7 @@ import { MinimalTiptapEditor } from '../../minimal-tiptap'
 import { Content } from '@tiptap/react'
 import { serverURL } from '@/constants';
 import axios from 'axios';
+import { getToken } from '@/lib/apiClient';
 import { toast } from '@/hooks/use-toast';
 
 const AdminTerms = () => {
@@ -17,7 +18,10 @@ const AdminTerms = () => {
   async function saveTerms() {
     setIsLoading(true);
     const postURL = serverURL + '/api/saveadmin';
-    const response = await axios.post(postURL, { data: value, type: 'terms' });
+    const token = getToken();
+    const response = await axios.post(postURL, { data: value, type: 'terms' }, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
     if (response.data.success) {
       sessionStorage.setItem('terms', '' + value);
       setIsLoading(false);
