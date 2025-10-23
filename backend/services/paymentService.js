@@ -6,6 +6,12 @@ import { config } from '../config/environment.js';
 const stripe = new Stripe(config.stripe.secretKey);
 const flw = new Flutterwave(config.flutterwave.publicKey, config.flutterwave.secretKey);
 
+
+function isValidPayPalSubscriptionId(id) {
+    // PayPal subscription IDs are typically alphanumeric, 10-32 chars. Adjust as needed.
+    return typeof id === 'string' && /^[A-Za-z0-9\-]{10,32}$/.test(id);
+}
+
 export class PaymentService {
     // Stripe
     static async createStripeCheckout(planId) {
@@ -115,6 +121,10 @@ export class PaymentService {
     }
 
     static async updatePayPalSubscription(subscriptionId, newPlanId) {
+        // Validate subscriptionId format to prevent SSRF
+        if (!isValidPayPalSubscriptionId(subscriptionId)) {
+            throw new Error("Invalid PayPal subscription ID format");
+        }
         const auth = this.getPayPalAuth();
         const response = await fetch(`https://api.paypal.com/v1/billing/subscriptions/${subscriptionId}/revise`, {
             method: 'POST',
