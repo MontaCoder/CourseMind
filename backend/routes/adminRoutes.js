@@ -5,11 +5,12 @@ import { ApiResponse } from '../utils/apiResponse.js';
 import { config } from '../config/environment.js';
 import { validateRequired } from '../middleware/validation.js';
 import { ADMIN_TYPES, COURSE_TYPES, USER_TYPES } from '../config/constants.js';
+import { authenticateToken, checkAdminAccess } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
 // DASHBOARD
-router.post('/dashboard', asyncHandler(async (req, res) => {
+router.post('/dashboard', authenticateToken, checkAdminAccess, asyncHandler(async (req, res) => {
     const users = await User.estimatedDocumentCount();
     const courses = await Course.estimatedDocumentCount();
     const admin = await Admin.findOne({ type: ADMIN_TYPES.MAIN });
@@ -41,25 +42,25 @@ router.post('/dashboard', asyncHandler(async (req, res) => {
 }));
 
 // GET USERS
-router.get('/getusers', asyncHandler(async (req, res) => {
+router.get('/getusers', authenticateToken, checkAdminAccess, asyncHandler(async (req, res) => {
     const users = await User.find({});
     res.json(users);
 }));
 
 // GET COURSES
-router.get('/getcourses', asyncHandler(async (req, res) => {
+router.get('/getcourses', authenticateToken, checkAdminAccess, asyncHandler(async (req, res) => {
     const courses = await Course.find({});
     res.json(courses);
 }));
 
 // GET PAID USERS
-router.get('/getpaid', asyncHandler(async (req, res) => {
+router.get('/getpaid', authenticateToken, checkAdminAccess, asyncHandler(async (req, res) => {
     const paidUsers = await User.find({ type: { $ne: USER_TYPES.FREE } });
     res.json(paidUsers);
 }));
 
 // GET ADMINS
-router.get('/getadmins', asyncHandler(async (req, res) => {
+router.get('/getadmins', authenticateToken, checkAdminAccess, asyncHandler(async (req, res) => {
     const admins = await Admin.find({});
     const adminEmails = admins.map(admin => admin.email);
     const users = await User.find({ email: { $nin: adminEmails } });
@@ -68,7 +69,7 @@ router.get('/getadmins', asyncHandler(async (req, res) => {
 }));
 
 // ADD ADMIN
-router.post('/addadmin', validateRequired(['email']), asyncHandler(async (req, res) => {
+router.post('/addadmin', authenticateToken, checkAdminAccess, validateRequired(['email']), asyncHandler(async (req, res) => {
     const { email } = req.body;
 
     const user = await User.findOne({ email });
@@ -90,7 +91,7 @@ router.post('/addadmin', validateRequired(['email']), asyncHandler(async (req, r
 }));
 
 // REMOVE ADMIN
-router.post('/removeadmin', validateRequired(['email']), asyncHandler(async (req, res) => {
+router.post('/removeadmin', authenticateToken, checkAdminAccess, validateRequired(['email']), asyncHandler(async (req, res) => {
     const { email } = req.body;
 
     await Admin.findOneAndDelete({ email });
@@ -105,13 +106,13 @@ router.post('/removeadmin', validateRequired(['email']), asyncHandler(async (req
 }));
 
 // GET CONTACTS
-router.get('/getcontact', asyncHandler(async (req, res) => {
+router.get('/getcontact', authenticateToken, checkAdminAccess, asyncHandler(async (req, res) => {
     const contacts = await Contact.find({});
     res.json(contacts);
 }));
 
 // SAVE ADMIN SETTINGS
-router.post('/saveadmin', validateRequired(['data', 'type']), asyncHandler(async (req, res) => {
+router.post('/saveadmin', authenticateToken, checkAdminAccess, validateRequired(['data', 'type']), asyncHandler(async (req, res) => {
     const { data, type } = req.body;
 
     const updateField = {};
@@ -144,7 +145,7 @@ router.post('/contact', validateRequired(['fname', 'lname', 'email', 'phone', 'm
 // BLOG ROUTES
 
 // CREATE BLOG
-router.post('/createblog', validateRequired(['title', 'excerpt', 'content', 'image', 'category', 'tags']), asyncHandler(async (req, res) => {
+router.post('/createblog', authenticateToken, checkAdminAccess, validateRequired(['title', 'excerpt', 'content', 'image', 'category', 'tags']), asyncHandler(async (req, res) => {
     const { title, excerpt, content, image, category, tags } = req.body;
 
     const buffer = Buffer.from(image.split(',')[1], 'base64');
@@ -155,7 +156,7 @@ router.post('/createblog', validateRequired(['title', 'excerpt', 'content', 'ima
 }));
 
 // DELETE BLOG
-router.post('/deleteblogs', validateRequired(['id']), asyncHandler(async (req, res) => {
+router.post('/deleteblogs', authenticateToken, checkAdminAccess, validateRequired(['id']), asyncHandler(async (req, res) => {
     const { id } = req.body;
 
     await Blog.findOneAndDelete({ _id: id });
@@ -164,7 +165,7 @@ router.post('/deleteblogs', validateRequired(['id']), asyncHandler(async (req, r
 }));
 
 // UPDATE BLOG
-router.post('/updateblogs', validateRequired(['id', 'type', 'value']), asyncHandler(async (req, res) => {
+router.post('/updateblogs', authenticateToken, checkAdminAccess, validateRequired(['id', 'type', 'value']), asyncHandler(async (req, res) => {
     const { id, type, value } = req.body;
 
     const booleanValue = value === 'true';
