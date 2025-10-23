@@ -15,6 +15,12 @@ const requiredEnvVars = [
     'LOGO'
 ];
 
+// JWT_SECRET is critical for production
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+    console.error('FATAL: JWT_SECRET must be set in production environment');
+    process.exit(1);
+}
+
 requiredEnvVars.forEach(varName => {
     if (!process.env[varName]) {
         console.warn(`Warning: ${varName} environment variable is not set`);
@@ -24,6 +30,12 @@ requiredEnvVars.forEach(varName => {
 export const config = {
     port: process.env.PORT || 3000,
     mongoUri: process.env.MONGODB_URI,
+    nodeEnv: process.env.NODE_ENV || 'development',
+    
+    jwt: {
+        secret: process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+        expiresIn: '7d'
+    },
     
     email: {
         user: process.env.EMAIL,
