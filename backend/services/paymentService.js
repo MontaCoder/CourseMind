@@ -191,6 +191,11 @@ export class PaymentService {
     }
 
     static async cancelRazorpaySubscription(subscriptionId) {
+        // Validate Razorpay subscription ID format to prevent SSRF
+        // Typical Razorpay subscriptionId format: sub_xxxxxxxx
+        if (typeof subscriptionId !== 'string' || !/^sub_[a-zA-Z0-9]+$/.test(subscriptionId)) {
+            throw new Error('Invalid subscription ID format.');
+        }
         const requestBody = {
             cancel_at_cycle_end: 0
         };

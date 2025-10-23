@@ -93,7 +93,7 @@
     "lucide-react": "^0.462.0",
     "mongoose": "^8.18.3",
     "next-themes": "^0.3.0",
-    "nodemailer": "^6.9.7",
+    "nodemailer": "^7.0.7",
     "nth-check": "^2.1.1",
     "react": "^18.3.1",
     "react-circular-progressbar": "^2.2.0",
