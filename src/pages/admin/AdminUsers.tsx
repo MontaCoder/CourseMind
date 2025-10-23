@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { serverURL } from '@/constants';
 import axios from 'axios';
+import { getToken } from '@/lib/apiClient';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const AdminUsers = () => {
@@ -31,7 +32,10 @@ const AdminUsers = () => {
   useEffect(() => {
     async function dashboardData() {
       const postURL = serverURL + `/api/getusers`;
-      const response = await axios.get(postURL);
+      const token = getToken();
+      const response = await axios.get(postURL, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       setData(response.data);
       setIsLoading(false);
     }

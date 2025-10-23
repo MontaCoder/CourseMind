@@ -52,9 +52,17 @@ const AdminLayout = () => {
   useEffect(() => {
     async function dashboardData() {
       const postURL = serverURL + `/api/dashboard`;
-      const response = await axios.post(postURL);
-      sessionStorage.setItem('adminEmail', response.data.admin.email);
-      if (response.data.admin.email !== sessionStorage.getItem('email')) {
+      const token = getToken();
+      try {
+        const response = await axios.post(postURL, {}, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        sessionStorage.setItem('adminEmail', response.data.admin.email);
+        if (response.data.admin.email !== sessionStorage.getItem('email')) {
+          redirectHome();
+        }
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error);
         redirectHome();
       }
     }
@@ -65,7 +73,7 @@ const AdminLayout = () => {
     } else {
       dashboardData();
     }
-  });
+  }, []);
 
   return (
     <SidebarProvider>
