@@ -41,6 +41,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from '@/hooks/use-toast';
 import { amountInZarOne, amountInZarTwo, appLogo, appName, companyName, flutterwaveEnabled, flutterwavePlanIdOne, flutterwavePlanIdTwo, flutterwavePublicKey, FreeCost, FreeType, MonthCost, MonthType, paypalEnabled, paypalPlanIdOne, paypalPlanIdTwo, paystackEnabled, paystackPlanIdOne, paystackPlanIdTwo, razorpayEnabled, razorpayPlanIdOne, razorpayPlanIdTwo, serverURL, stripeEnabled, stripePlanIdOne, stripePlanIdTwo, YearCost, YearType } from '@/constants';
 import axios from 'axios';
+import { getToken } from '@/lib/apiClient';
 import { useFlutterwave } from 'flutterwave-react-v3';
 
 // Form validation schema
@@ -186,9 +187,12 @@ const PaymentDetails = () => {
       email: data.email,
       fullAddress: fullAddress
     };
+    const token = getToken();
     try {
       const postURL = serverURL + '/api/razorpaycreate';
-      const res = await axios.post(postURL, dataToSend);
+      const res = await axios.post(postURL, dataToSend, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       sessionStorage.setItem('method', 'razorpay');
       setIsProcessing(false);
       sessionStorage.setItem('plan', plan.name);
@@ -216,9 +220,12 @@ const PaymentDetails = () => {
       amountInZar,
       email: data.email
     };
+    const token = getToken();
     try {
       const postURL = serverURL + '/api/paystackpayment';
-      const res = await axios.post(postURL, dataToSend);
+      const res = await axios.post(postURL, dataToSend, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       sessionStorage.setItem('paystack', res.data.id);
       sessionStorage.setItem('method', 'paystack');
       sessionStorage.setItem('plan', plan.name);
@@ -263,9 +270,12 @@ const PaymentDetails = () => {
     const dataToSend = {
       planId: planId
     };
+    const token = getToken();
     try {
       const postURL = serverURL + '/api/stripepayment';
-      const res = await axios.post(postURL, dataToSend);
+      const res = await axios.post(postURL, dataToSend, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       sessionStorage.setItem('stripe', res.data.id);
       sessionStorage.setItem('method', 'stripe');
       sessionStorage.setItem('plan', plan.name);
@@ -500,22 +510,37 @@ const PaymentDetails = () => {
       brand: companyName,
       admin: data.state
     };
+    const token = getToken();
     try {
       const postURL = serverURL + '/api/paypal';
-      const res = await axios.post(postURL, dataToSend);
+      const res = await axios.post(postURL, dataToSend, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      
+      // Check if response has links
+      if (!res.data || !res.data.links || !Array.isArray(res.data.links)) {
+        console.error('PayPal response structure:', res.data);
+        throw new Error('Invalid PayPal response: missing links');
+      }
+      
       sessionStorage.setItem('method', 'paypal');
       sessionStorage.setItem('plan', plan.name);
       setIsProcessing(false);
+      
       const links = res.data.links;
       const approveLink = links.find(link => link.rel === "approve");
-      const approveHref = approveLink ? approveLink.href : null;
-      window.location.href = approveHref;
+      
+      if (!approveLink || !approveLink.href) {
+        throw new Error('PayPal approval link not found');
+      }
+      
+      window.location.href = approveLink.href;
     } catch (error) {
-      console.error(error);
+      console.error('PayPal error:', error);
       setIsProcessing(false);
       toast({
         title: "Error",
-        description: "Internal Server Error",
+        description: error?.response?.data?.message || "Failed to initiate PayPal payment",
       });
     }
   }

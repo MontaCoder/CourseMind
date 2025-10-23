@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { appLogo, companyName, MonthCost, serverURL, websiteURL, YearCost } from '@/constants';
 import axios from 'axios';
+import { getToken } from '@/lib/apiClient';
 import generatePDF from 'react-to-pdf';
 
 const PaymentSuccess = () => {
@@ -68,7 +69,10 @@ const PaymentSuccess = () => {
         plan: sessionStorage.getItem('plan')
       };
       const postURL = serverURL + '/api/stripedetails';
-      await axios.post(postURL, dataToSend).then(res => {
+      const token = getToken();
+      await axios.post(postURL, dataToSend, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      }).then(res => {
         sessionStorage.setItem('type', sessionStorage.getItem('plan'));
         sendEmail();
       });
@@ -79,7 +83,10 @@ const PaymentSuccess = () => {
         plan: sessionStorage.getItem('plan')
       };
       const postURL = serverURL + '/api/paystackfetch';
-      await axios.post(postURL, dataToSend).then(res => {
+      const token = getToken();
+      await axios.post(postURL, dataToSend, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      }).then(res => {
         sessionStorage.setItem('type', sessionStorage.getItem('plan'));
         sendEmail();
       });
@@ -90,7 +97,10 @@ const PaymentSuccess = () => {
         plan: sessionStorage.getItem('plan')
       };
       const postURL = serverURL + '/api/flutterdetails';
-      await axios.post(postURL, dataToSend).then(res => {
+      const token = getToken();
+      await axios.post(postURL, dataToSend, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      }).then(res => {
         sessionStorage.setItem('type', sessionStorage.getItem('plan'));
         sendEmail();
       });
@@ -104,13 +114,19 @@ const PaymentSuccess = () => {
       try {
         if (sessionStorage.getItem('method') === 'paypal') {
           const postURL = serverURL + '/api/paypaldetails';
-          await axios.post(postURL, dataToSend).then(res => {
+          const token = getToken();
+          await axios.post(postURL, dataToSend, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+          }).then(res => {
             sessionStorage.setItem('type', sessionStorage.getItem('plan'));
             sendEmail();
           });
         } else if (sessionStorage.getItem('method') === 'razorpay') {
           const postURL = serverURL + '/api/razorapydetails';
-          await axios.post(postURL, dataToSend).then(res => {
+          const token = getToken();
+          await axios.post(postURL, dataToSend, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+          }).then(res => {
             sessionStorage.setItem('type', sessionStorage.getItem('plan'));
             sendEmail();
           });
@@ -182,7 +198,10 @@ const PaymentSuccess = () => {
       const subscriberId = sessionStorage.getItem('email');
       const method = sessionStorage.getItem('method');
       const postURL = serverURL + '/api/sendreceipt';
-      await axios.post(postURL, { html, email, plan, subscriberId, user, method, subscription });
+      const token = getToken();
+      await axios.post(postURL, { html, email, plan, subscriberId, user, method, subscription }, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
     } catch (error) {
       console.error(error);
     }
