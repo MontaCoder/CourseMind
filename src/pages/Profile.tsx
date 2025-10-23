@@ -11,6 +11,7 @@ import { toast } from "@/hooks/use-toast";
 import { PenLine, Save, ShieldCheck, CreditCard, Loader } from "lucide-react";
 import { MonthCost, MonthType, serverURL, YearCost } from '@/constants';
 import axios from 'axios';
+import { getToken } from '@/lib/apiClient';
 import { DownloadIcon, TrashIcon } from '@radix-ui/react-icons';
 import {
   Dialog,
@@ -76,8 +77,11 @@ const Profile = () => {
     setProcessingDelete(true);
     const uid = sessionStorage.getItem('uid');
     const postURL = serverURL + '/api/deleteuser';
+    const token = getToken();
     try {
-      const response = await axios.post(postURL, { userId: uid });
+      const response = await axios.post(postURL, { userId: uid }, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       if (response.data.success) {
         toast({
           title: "Profile Deleted",
@@ -124,8 +128,11 @@ const Profile = () => {
     setProcessing(true);
     const uid = sessionStorage.getItem('uid');
     const postURL = serverURL + '/api/profile';
+    const token = getToken();
     try {
-      const response = await axios.post(postURL, { email: formData.email, mName: formData.name, password: formData.password, uid });
+      const response = await axios.post(postURL, { email: formData.email, mName: formData.name, password: formData.password, uid }, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       if (response.data.success) {
         toast({
           title: "Profile updated",
@@ -160,9 +167,12 @@ const Profile = () => {
         uid: sessionStorage.getItem('uid'),
         email: sessionStorage.getItem('email'),
       };
+      const token = getToken();
       try {
         const postURL = serverURL + '/api/subscriptiondetail';
-        await axios.post(postURL, dataToSend).then(res => {
+        await axios.post(postURL, dataToSend, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        }).then(res => {
           setMethod(res.data.method);
           setJsonData(res.data.session);
           setPlan(sessionStorage.getItem('type'));
@@ -184,10 +194,13 @@ const Profile = () => {
       id: jsonData.id,
       email: sessionStorage.getItem('email')
     };
+    const token = getToken();
     try {
       if (method === 'stripe') {
         const postURL = serverURL + '/api/stripecancel';
-        await axios.post(postURL, dataToSend).then(res => {
+        await axios.post(postURL, dataToSend, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        }).then(res => {
           setProcessingCancel(false);
           toast({
             title: "Subscription Cancelled",
@@ -198,7 +211,9 @@ const Profile = () => {
         });
       } else if (method === 'paypal') {
         const postURL = serverURL + '/api/paypalcancel';
-        await axios.post(postURL, dataToSend).then(res => {
+        await axios.post(postURL, dataToSend, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        }).then(res => {
           setProcessingCancel(false);
           toast({
             title: "Subscription Cancelled",
@@ -214,7 +229,9 @@ const Profile = () => {
           email: sessionStorage.getItem('email')
         };
         const postURL = serverURL + '/api/paystackcancel';
-        await axios.post(postURL, dataToSends).then(res => {
+        await axios.post(postURL, dataToSends, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        }).then(res => {
           setProcessingCancel(false);
           toast({
             title: "Subscription Cancelled",
@@ -232,7 +249,9 @@ const Profile = () => {
           email: sessionStorage.getItem('email')
         };
         const postURL = serverURL + '/api/flutterwavecancel';
-        await axios.post(postURL, dataToSends).then(res => {
+        await axios.post(postURL, dataToSends, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        }).then(res => {
           setProcessingCancel(false);
           toast({
             title: "Subscription Cancelled",
@@ -244,7 +263,9 @@ const Profile = () => {
       }
       else {
         const postURL = serverURL + '/api/razorpaycancel';
-        await axios.post(postURL, dataToSend).then(res => {
+        await axios.post(postURL, dataToSend, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        }).then(res => {
           setProcessingCancel(false);
           toast({
             title: "Subscription Cancelled",
