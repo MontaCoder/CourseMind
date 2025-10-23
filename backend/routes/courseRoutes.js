@@ -1,5 +1,5 @@
 import express from 'express';
-import { Course, Lang, Notes, Exam } from '../models/index.js';
+import { Course, Lang, Notes, Exam, Admin } from '../models/index.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { MediaService } from '../services/mediaService.js';
@@ -7,11 +7,13 @@ import { AIService } from '../services/aiService.js';
 import { sendEmail } from '../utils/emailService.js';
 import { validateRequired } from '../middleware/validation.js';
 import { HTTP_STATUS } from '../config/constants.js';
+import { authenticateToken } from '../middleware/authMiddleware.js';
+import { ADMIN_TYPES } from '../config/constants.js';
 
 const router = express.Router();
 
 // STORE COURSE
-router.post('/course', validateRequired(['user', 'content', 'type', 'mainTopic', 'lang']), asyncHandler(async (req, res) => {
+router.post('/course', authenticateToken, validateRequired(['user', 'content', 'type', 'mainTopic', 'lang']), asyncHandler(async (req, res) => {
     const { user, content, type, mainTopic, lang } = req.body;
 
     const photo = await MediaService.searchImage(mainTopic);
@@ -26,7 +28,7 @@ router.post('/course', validateRequired(['user', 'content', 'type', 'mainTopic',
 }));
 
 // STORE SHARED COURSE
-router.post('/courseshared', validateRequired(['user', 'content', 'type', 'mainTopic']), asyncHandler(async (req, res) => {
+router.post('/courseshared', authenticateToken, validateRequired(['user', 'content', 'type', 'mainTopic']), asyncHandler(async (req, res) => {
     const { user, content, type, mainTopic } = req.body;
 
     const photo = await MediaService.searchImage(mainTopic);
@@ -38,7 +40,7 @@ router.post('/courseshared', validateRequired(['user', 'content', 'type', 'mainT
 }));
 
 // UPDATE COURSE
-router.post('/update', validateRequired(['content', 'courseId']), asyncHandler(async (req, res) => {
+router.post('/update', authenticateToken, validateRequired(['content', 'courseId']), asyncHandler(async (req, res) => {
     const { content, courseId } = req.body;
 
     await Course.findOneAndUpdate(
@@ -50,7 +52,7 @@ router.post('/update', validateRequired(['content', 'courseId']), asyncHandler(a
 }));
 
 // DELETE COURSE
-router.post('/deletecourse', validateRequired(['courseId']), asyncHandler(async (req, res) => {
+router.post('/deletecourse', authenticateToken, validateRequired(['courseId']), asyncHandler(async (req, res) => {
     const { courseId } = req.body;
 
     await Course.findOneAndDelete({ _id: courseId });
@@ -59,7 +61,7 @@ router.post('/deletecourse', validateRequired(['courseId']), asyncHandler(async 
 }));
 
 // FINISH COURSE
-router.post('/finish', validateRequired(['courseId']), asyncHandler(async (req, res) => {
+router.post('/finish', authenticateToken, validateRequired(['courseId']), asyncHandler(async (req, res) => {
     const { courseId } = req.body;
 
     await Course.findOneAndUpdate(
@@ -71,7 +73,7 @@ router.post('/finish', validateRequired(['courseId']), asyncHandler(async (req, 
 }));
 
 // GET COURSES WITH PAGINATION
-router.get('/courses', asyncHandler(async (req, res) => {
+router.get('/courses', authenticateToken, asyncHandler(async (req, res) => {
     const { userId, page = 1, limit = 9 } = req.query;
     const skip = (page - 1) * limit;
 
@@ -92,7 +94,7 @@ router.get('/shareable', asyncHandler(async (req, res) => {
 }));
 
 // SEND CERTIFICATE
-router.post('/sendcertificate', validateRequired(['html', 'email']), asyncHandler(async (req, res) => {
+router.post('/sendcertificate', authenticateToken, validateRequired(['html', 'email']), asyncHandler(async (req, res) => {
     const { html, email } = req.body;
 
     await sendEmail(email, 'Certification of completion', html);
@@ -101,7 +103,7 @@ router.post('/sendcertificate', validateRequired(['html', 'email']), asyncHandle
 }));
 
 // GET NOTES
-router.post('/getnotes', validateRequired(['course']), asyncHandler(async (req, res) => {
+router.post('/getnotes', authenticateToken, validateRequired(['course']), asyncHandler(async (req, res) => {
     const { course } = req.body;
 
     const existingNotes = await Notes.findOne({ course });
@@ -114,7 +116,7 @@ router.post('/getnotes', validateRequired(['course']), asyncHandler(async (req, 
 }));
 
 // SAVE NOTES
-router.post('/savenotes', validateRequired(['course', 'notes']), asyncHandler(async (req, res) => {
+router.post('/savenotes', authenticateToken, validateRequired(['course', 'notes']), asyncHandler(async (req, res) => {
     const { course, notes } = req.body;
 
     const existingNotes = await Notes.findOne({ course });
@@ -131,7 +133,7 @@ router.post('/savenotes', validateRequired(['course', 'notes']), asyncHandler(as
 }));
 
 // GENERATE EXAM
-router.post('/aiexam', validateRequired(['courseId', 'mainTopic', 'subtopicsString', 'lang']), asyncHandler(async (req, res) => {
+router.post('/aiexam', authenticateToken, validateRequired(['courseId', 'mainTopic', 'subtopicsString', 'lang']), asyncHandler(async (req, res) => {
     const { courseId, mainTopic, subtopicsString, lang } = req.body;
 
     const existingExam = await Exam.findOne({ course: courseId });
@@ -149,7 +151,7 @@ router.post('/aiexam', validateRequired(['courseId', 'mainTopic', 'subtopicsStri
 }));
 
 // UPDATE EXAM RESULT
-router.post('/updateresult', validateRequired(['courseId', 'marksString']), asyncHandler(async (req, res) => {
+router.post('/updateresult', authenticateToken, validateRequired(['courseId', 'marksString']), asyncHandler(async (req, res) => {
     const { courseId, marksString } = req.body;
 
     await Exam.findOneAndUpdate(
@@ -161,7 +163,7 @@ router.post('/updateresult', validateRequired(['courseId', 'marksString']), asyn
 }));
 
 // SEND EXAM MAIL
-router.post('/sendexammail', validateRequired(['html', 'email', 'subjects']), asyncHandler(async (req, res) => {
+router.post('/sendexammail', authenticateToken, validateRequired(['html', 'email', 'subjects']), asyncHandler(async (req, res) => {
     const { html, email, subjects } = req.body;
 
     await sendEmail(email, subjects, html);
@@ -170,7 +172,7 @@ router.post('/sendexammail', validateRequired(['html', 'email', 'subjects']), as
 }));
 
 // GET EXAM RESULT
-router.post('/getmyresult', validateRequired(['courseId']), asyncHandler(async (req, res) => {
+router.post('/getmyresult', authenticateToken, validateRequired(['courseId']), asyncHandler(async (req, res) => {
     const { courseId } = req.body;
 
     const existingExam = await Exam.findOne({ course: courseId });
@@ -183,6 +185,14 @@ router.post('/getmyresult', validateRequired(['courseId']), asyncHandler(async (
     }
 
     return ApiResponse.error(res, '', HTTP_STATUS.NOT_FOUND, { message: false, lang: langValue });
+}));
+
+// CHECK ADMIN STATUS
+router.post('/checkadmin', authenticateToken, asyncHandler(async (req, res) => {
+    const admin = await Admin.findOne({ type: ADMIN_TYPES.MAIN });
+    return ApiResponse.success(res, { 
+        admin: { email: admin ? admin.email : null }
+    }, 'Admin status retrieved', HTTP_STATUS.OK);
 }));
 
 export default router;
