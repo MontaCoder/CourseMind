@@ -8,7 +8,7 @@ export const razorpayEnabled = false;
 export const paypalEnabled = false;
 export const stripeEnabled = true;
 export const paystackEnabled = false;
-export const flutterwaveEnabled = false;
+// Flutterwave support removed
 
 //PRICING :-
 //FREE 
@@ -49,11 +49,6 @@ export const paystackPlanIdOne = "PLN_ouqmm8eo6i2k9k8";
 export const paystackPlanIdTwo = "PLN_1v1xqb8io9t5lis";
 export const amountInZarOne = '170';
 export const amountInZarTwo = '1871';
-
-//FLUTTERWAVE
-export const flutterwavePlanIdOne = "67960";
-export const flutterwavePlanIdTwo = "67961";
-export const flutterwavePublicKey = "FLWPUBK_TEST-6ee1faf6460ea587f510a024ac4c2b23-X";
 
 //SOCIAL SIGNIN
 export const googleClientId = "150644331076-flt197jvuqg9ohlf6q9rsjk3e3qomjd2.apps.googleusercontent.com";

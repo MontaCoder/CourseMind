@@ -255,8 +255,6 @@ CourseMind provides a RESTful API for all core functionalities. The API base URL
 
 - `POST /api/paypal` - PayPal payment processing
 - `POST /api/stripe` - Stripe payment processing (if implemented)
-- `POST /api/flutterwave` - Flutterwave payment processing
-
 ### User Management
 
 - `POST /api/profile` - Update user profile
