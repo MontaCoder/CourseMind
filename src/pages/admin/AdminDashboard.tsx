@@ -14,6 +14,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { Skeleton } from '@/components/ui/skeleton';
 import { serverURL } from '@/constants';
 import axios from 'axios';
+import { getToken } from '@/lib/apiClient';
 
 const usersPieData = [
   { name: 'Free', value: 0, color: '#F7F7F7' },
@@ -42,7 +43,10 @@ const AdminDashboard = () => {
   useEffect(() => {
     async function dashboardData() {
       const postURL = serverURL + `/api/dashboard`;
-      const response = await axios.post(postURL);
+      const token = getToken();
+      const response = await axios.post(postURL, {}, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       sessionStorage.setItem('terms', response.data.admin.terms)
       sessionStorage.setItem('privacy', response.data.admin.privacy)
       sessionStorage.setItem('cancel', response.data.admin.cancel)
