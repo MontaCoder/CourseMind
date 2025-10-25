@@ -1,447 +1,377 @@
 # CourseMind - AI-Powered Course Generation Platform
 
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/MontaCoder/CourseMind)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D16.0.0-green.svg)](https://nodejs.org/)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18+-61dafb.svg)](https://reactjs.org/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-7.0+-47A248.svg)](https://www.mongodb.com/)
+[![License](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
 
-<img src="https://i.postimg.cc/wBL9c9Vp/Gemini-Generated-Image-7fr1527fr1527fr1-Photoroom.png" alt="CourseMind Logo" width="200"/>
+<div align="center">
+  <img src="https://i.postimg.cc/wBL9c9Vp/Gemini-Generated-Image-7fr1527fr1527fr1-Photoroom.png" alt="CourseMind Logo" width="200"/>
+</div>
 
-CourseMind is an AI-first course creation workspace that transforms raw ideas into premium learning experiences in minutes. Built with cutting-edge AI technology, it enables educators, content creators, and organizations to craft studio-grade courses with narrative structure, multimedia assets, and instant assessments.
-
-## 📸 Screenshots
-
-![CourseMind Dashboard](res/screenshot.png)
-*CourseMind Dashboard - AI-powered course generation interface*
+**CourseMind** is an intelligent course creation platform that transforms ideas into comprehensive learning experiences using advanced AI technology. Built for educators, content creators, and organizations, it enables rapid development of structured courses with multimedia content, assessments, and real-time progress tracking.
 
 ## ✨ Key Features
 
-### AI-Orchestrated Course Generation
-- Transform transcripts, briefs, and raw notes into structured course modules
-- Generate visuals, labs, and comprehension checkpoints automatically
-- AI-powered content creation that maintains educational quality
+### 🤖 AI-Powered Course Generation
+- **Smart Content Creation**: Generate structured course modules from simple prompts or topics
+- **Multi-Language Support**: Create courses in 23+ languages with native-quality localization
+- **Content Types**: Support for both text-based and video-enhanced courses
+- **Automatic Assessments**: AI-generated quizzes and evaluation rubrics
 
-### Adaptive Modality Mixer
-- Create theory-based or video-led lessons
-- Auto-tune content to your brand voice and learner proficiency
-- Support for cinematic image-led learning experiences
+### 📚 Learning Management
+- **Course Builder**: Intuitive drag-and-drop course creation interface
+- **Rich Text Editor**: TipTap-powered editor with advanced formatting options
+- **Progress Tracking**: Real-time completion monitoring and analytics
+- **Certificate Generation**: Automated course completion certificates
+- **Social Sharing**: Share courses and achievements across platforms
 
-### Assessment Fabric
-- Craft scenario-based quizzes and reflections
-- Semantic depth evaluations that measure mastery
-- Automated rubric generation
+### 🔐 User Management & Authentication
+- **Secure Authentication**: JWT-based authentication with social login (Google)
+- **User Profiles**: Comprehensive profile management and subscription tracking
+- **Admin Panel**: Full-featured admin dashboard for platform management
+- **Role-Based Access**: Admin, creator, and learner role management
 
-### Global Scale Support
-- 23-language localization layer
-- Native-quality translations with cultural nuance
-- Built-in accessibility features
+### 💳 Subscription & Payments
+- **Stripe Integration**: Secure payment processing with subscription management
+- **Multiple Tiers**: Free and premium subscription plans
+- **Usage Limits**: Tiered feature access based on subscription level
 
-### Real-time AI Coach
-- Context-aware mentor for learners
-- Instant explanations and summaries
-- Interactive support during learning
-
-### Live Engagement Analytics
-- Track completion rates and dwell time
-- Identify knowledge gaps
-- Integration with Slack and LMS platforms
+### 🌐 Modern Web Platform
+- **Progressive Web App**: Installable web app with offline capabilities
+- **Responsive Design**: Optimized for all device types
+- **Dark Mode**: System-aware theme switching
+- **Accessibility**: WCAG compliant interface design
 
 ## 🚀 Tech Stack
 
 ### Frontend
 - **React 18** - Modern React with hooks and functional components
-- **TypeScript** - Type-safe development
-- **Vite** - Fast build tool and development server
-- **Tailwind CSS** - Utility-first CSS framework
-- **Radix UI** - Accessible component primitives
-- **React Router** - Client-side routing
-- **React Query** - Data fetching and state management
+- **TypeScript** - Type-safe development with enhanced IDE support
+- **Vite** - Lightning-fast build tool and development server
+- **Tailwind CSS** - Utility-first CSS framework with custom animations
+- **Radix UI** - Accessible, customizable component primitives
+- **React Query** - Powerful data fetching and state management
+- **React Router** - Client-side routing with nested layouts
+- **React Hook Form** - Performant forms with validation
 
 ### Backend
-- **Node.js** - Runtime environment
-- **Express.js** - Web application framework
-- **MongoDB** - NoSQL database
-- **JWT** - Authentication tokens
-- **Nodemailer** - Email service
+- **Node.js** - Runtime environment with ES modules support
+- **Express.js** - Robust web application framework
+- **MongoDB** - NoSQL database with Mongoose ODM
+- **JWT Authentication** - Secure token-based authentication
+- **Security Middleware** - CORS, rate limiting, input sanitization
 
 ### AI & Integrations
-- **Google Generative AI** - AI content generation
-- **Stripe, PayPal, Paystack, Flutterwave** - Payment processing
-- **Google OAuth** - Social authentication
-- **Facebook Login** - Social authentication
+- **Google Generative AI** - Advanced content generation and processing
+- **Stripe** - Payment processing and subscription management
+- **Nodemailer** - Email services for notifications and certificates
+- **YouTube API** - Video content integration
+- **Unsplash API** - High-quality image assets
 
-### Additional Libraries
-- **TipTap** - Rich text editor
-- **React YouTube** - Video embedding
-- **React PDF** - PDF generation
-- **PWA Support** - Progressive Web App features
+### Development Tools
+- **ESLint** - Code linting and formatting
+- **TypeScript** - Static type checking
+- **Vite PWA Plugin** - Progressive Web App functionality
+- **React Helmet** - Dynamic meta tag management
 
 ## 🏗️ Project Structure
 
 ```
 CourseMind/
-├── public/                 # Static assets
-│   ├── favicon.ico
-│   ├── manifest.json
-│   └── ...
-├── backend/                # Backend server
-│   └── server.js          # Express server with API routes
-├── src/
-│   ├── components/        # Reusable React components
-│   │   ├── ui/           # UI component library
-│   │   ├── layouts/      # Layout components
-│   │   └── ...           # Feature components
-│   ├── contexts/         # React contexts
-│   ├── hooks/            # Custom React hooks
-│   ├── lib/              # Utility functions
-│   ├── pages/            # Page components
-│   │   ├── admin/        # Admin panel pages
-│   │   └── ...           # Public pages
-│   ├── constants.tsx     # Application constants
-│   ├── App.tsx           # Main app component
-│   └── main.tsx          # App entry point
-├── package.json           # Dependencies and scripts
-├── vite.config.ts         # Vite configuration
-└── tailwind.config.ts     # Tailwind CSS configuration
+├── 📁 public/                 # Static assets and PWA manifest
+├── 📁 src/
+│   ├── 📁 components/        # Reusable React components
+│   │   ├── 📁 ui/           # Shadcn/ui component library
+│   │   ├── 📁 layouts/      # Layout components (Dashboard, Admin)
+│   │   └── 📁 minimal-tiptap/ # Rich text editor components
+│   ├── 📁 pages/            # Route components
+│   │   ├── 📁 admin/        # Admin panel pages
+│   │   └── 📁 ...           # Public and dashboard pages
+│   ├── 📁 hooks/            # Custom React hooks
+│   ├── 📁 lib/              # Utility functions and API client
+│   ├── 📁 contexts/         # React contexts (Theme, Auth)
+│   └── 📁 constants.tsx     # Application constants and configuration
+├── 📁 backend/              # Backend server
+│   ├── 📁 config/          # Configuration files
+│   ├── 📁 middleware/      # Express middleware
+│   ├── 📁 models/          # MongoDB models
+│   ├── 📁 routes/          # API route handlers
+│   ├── 📁 services/        # Business logic services
+│   └── 📁 utils/           # Utility functions and email templates
+├── 📁 .github/             # GitHub workflows and templates
+└── ⚙️ Configuration Files
+    ├── vite.config.ts      # Vite build configuration
+    ├── tailwind.config.ts  # Tailwind CSS configuration
+    └── tsconfig.json       # TypeScript configuration
 ```
 
 ## 🛠️ Installation & Setup
 
 ### Prerequisites
-- Node.js (v16 or higher)
-- npm or bun
-- MongoDB database
+- **Node.js** (v18 or higher)
+- **npm** or **bun** package manager
+- **MongoDB** database (local or cloud instance)
 
 ### Backend Setup
 
-1. Navigate to the server directory:
-```bash
-cd server
-```
+1. **Navigate to backend directory:**
+   ```bash
+   cd backend
+   ```
 
-2. Install dependencies:
-```bash
-npm install
-```
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
 
-3. Create a `.env` file in the server directory with the following variables:
-```env
-PORT=5000
-MONGODB_URI=your_mongodb_connection_string
-JWT_SECRET=your_jwt_secret
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
-STRIPE_SECRET_KEY=your_stripe_secret_key
-# Add other payment gateway keys as needed
-```
+3. **Environment Configuration:**
+   Create a `.env` file in the backend directory:
+   ```env
+   # Database
+   PORT=5000
+   MONGODB_URI=your_mongodb_connection_string
+   NODE_ENV=development
 
-4. Start the backend server:
-```bash
-node server.js
-```
+   # Authentication
+   JWT_SECRET=your_jwt_secret_key
+
+   # AI Services
+   API_KEY=your_google_ai_api_key
+
+   # Payment Processing
+   STRIPE_SECRET_KEY=your_stripe_secret_key
+
+   # Email Service
+   EMAIL=your_email@gmail.com
+   PASSWORD=your_app_password
+
+   # Social Authentication
+   GOOGLE_CLIENT_ID=your_google_client_id
+   GOOGLE_CLIENT_SECRET=your_google_client_secret
+
+   # External Services
+   UNSPLASH_ACCESS_KEY=your_unsplash_access_key
+   WEBSITE_URL=http://localhost:8080
+   COMPANY=CourseMind
+   LOGO=https://your-logo-url.com/logo.png
+   ```
+
+4. **Start the backend server:**
+   ```bash
+   node server.js
+   ```
 
 ### Frontend Setup
 
-1. Navigate to the root directory:
-```bash
-cd ..
-```
+1. **Install dependencies:**
+   ```bash
+   npm install
+   # or
+   bun install
+   ```
 
-2. Install dependencies:
-```bash
-npm install
-# or
-bun install
-```
+2. **Environment Configuration:**
+   Create a `.env` file in the root directory:
+   ```env
+   VITE_API_URL=http://localhost:5000
+   VITE_GOOGLE_CLIENT_ID=your_google_client_id
+   ```
 
-3. Create a `.env` file in the root directory with:
-```env
-VITE_API_URL=http://localhost:5000
-VITE_GOOGLE_CLIENT_ID=your_google_client_id
-```
+3. **Start the development server:**
+   ```bash
+   npm run dev
+   # or
+   bun run dev
+   ```
 
-4. Start the development server:
-```bash
-npm run dev
-# or
-bun run dev
-```
-
-5. Open [http://localhost:8080](http://localhost:8080) in your browser.
+4. **Open your browser:**
+   Navigate to [http://localhost:8080](http://localhost:8080)
 
 ## 📱 Available Scripts
 
-### Frontend Scripts
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run build:dev` - Build for development
-- `npm run preview` - Preview production build
-- `npm run lint` - Run ESLint
-
-### Backend Scripts
-- `node server.js` - Start the Express server
-
-## 🚀 Deployment
-
-### Production Build
-
-1. Build the frontend:
+### Development
 ```bash
-npm run build
-```
-
-2. The built files will be in the `dist/` directory.
-
-### Environment Setup for Production
-
-Ensure your production environment has the following:
-
-- Node.js runtime
-- MongoDB database
-- Environment variables configured (see `.env` examples above)
-
-### Recommended Deployment Platforms
-
-- **Vercel** - For frontend deployment
-- **Railway** - For full-stack deployment
-- **Heroku** - For backend deployment
-- **AWS/DigitalOcean** - For custom deployments
-
-### Docker Deployment (Optional)
-
-If using Docker:
-
-```dockerfile
-# Dockerfile example
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-COPY . .
-EXPOSE 5000
-CMD ["node", "backend/server.js"]
+npm run dev          # Start development server
+npm run backend      # Start backend server only
+npm run build        # Build for production
+npm run build:dev    # Build for development
+npm run preview      # Preview production build
+npm run lint         # Run ESLint
 ```
 
 ## 📚 API Documentation
 
-CourseMind provides a RESTful API for all core functionalities. The API base URL is `/api`.
+CourseMind provides a comprehensive REST API for all core functionalities.
 
 ### Authentication Endpoints
-
 - `POST /api/signup` - User registration
 - `POST /api/signin` - User login
-- `POST /api/social` - Social authentication (Google/Facebook)
-- `POST /api/forgot` - Request password reset
-- `POST /api/reset-password` - Reset password with token
+- `POST /api/social` - Social authentication (Google)
+- `POST /api/forgot` - Password reset request
+- `POST /api/reset-password` - Password reset with token
 
 ### Course Management
-
 - `POST /api/generate` - Generate course content using AI
 - `POST /api/course` - Save a new course
 - `GET /api/courses` - Retrieve user's courses
 - `POST /api/update` - Update existing course
 - `POST /api/deletecourse` - Delete a course
 - `POST /api/finish` - Mark course as completed
-- `GET /api/shareable` - Get shareable courses
 
 ### AI Features
-
 - `POST /api/prompt` - Send custom AI prompts
 - `POST /api/image` - Generate images
 - `POST /api/yt` - Search YouTube videos
 - `POST /api/transcript` - Get video transcripts
 
 ### Payment & Subscription
+- `POST /api/stripepayment` - Stripe payment processing
+- `POST /api/subscriptiondetail` - Get subscription details
+- `POST /api/stripecancel` - Cancel Stripe subscription
 
-- `POST /api/paypal` - PayPal payment processing
-- `POST /api/stripe` - Stripe payment processing (if implemented)
-### User Management
-
-- `POST /api/profile` - Update user profile
-- `POST /api/data` - Get user data
-
-### Blog Management (Admin)
-
+### Admin Management
+- `POST /api/checkadmin` - Verify admin status
+- `GET /api/getusers` - Retrieve user list
 - `POST /api/createblog` - Create blog post
-- `GET /api/getblogs` - Retrieve all blog posts
-- `POST /api/updateblogs` - Update blog post
-- `POST /api/deleteblogs` - Delete blog post
+- `GET /api/getblogs` - Retrieve blog posts
 
-### Other
-
-- `POST /api/sendcertificate` - Send course completion certificate
-- `POST /api/courseshared` - Share course functionality
-
-For detailed request/response formats, refer to the server.js file or use API testing tools like Postman.
-
-## 🧪 Testing
-
-### Running Tests
-
-Currently, the project does not have automated tests configured. To add testing:
-
-1. Install testing framework:
-```bash
-npm install --save-dev vitest @testing-library/react @testing-library/jest-dom
-```
-
-2. Add test scripts to `package.json`:
-```json
-"scripts": {
-  "test": "vitest",
-  "test:ui": "vitest --ui"
-}
-```
-
-3. Example test structure:
-```
-src/
-  components/
-    Button.test.tsx
-  __tests__/
-    utils.test.ts
-```
-
-### Manual Testing
-
-- Use the development server to test UI components
-- Test API endpoints using Postman or curl
-- Verify payment flows in staging environment
-- Test course generation with various inputs
-
-## 🎯 Usage
+## 🎯 User Guide
 
 ### For Content Creators
-1. **Sign Up/Login** - Create an account or log in with Google/Facebook
-2. **Generate Course** - Use the AI-powered course generator to create content
-3. **Customize** - Edit and refine generated content with the rich text editor
-4. **Add Assessments** - Create quizzes and assessments automatically
-5. **Publish** - Share your courses with learners
+1. **Sign Up/Login** - Create account or login with Google
+2. **Generate Course** - Use AI-powered course generator
+3. **Customize Content** - Edit with rich text editor
+4. **Add Assessments** - Create AI-generated quizzes
+5. **Publish & Share** - Share courses with learners
 
 ### For Learners
 1. **Browse Courses** - Explore available courses
-2. **Enroll** - Sign up for courses
-3. **Learn** - Access course content and materials
-4. **Take Quizzes** - Complete assessments
-5. **Get Certificate** - Earn certificates upon completion
+2. **Enroll & Learn** - Access course content
+3. **Track Progress** - Monitor completion status
+4. **Take Assessments** - Complete quizzes and evaluations
+5. **Earn Certificates** - Receive completion certificates
 
 ### For Administrators
-1. **Access Admin Panel** - Log in to `/admin`
+1. **Access Admin Panel** - Navigate to `/admin`
 2. **Manage Users** - View and manage user accounts
-3. **Manage Courses** - Oversee course content
-4. **Handle Payments** - Monitor subscriptions and payments
-5. **Create Blog Posts** - Publish blog content
+3. **Monitor Courses** - Oversee course content and usage
+4. **Handle Subscriptions** - Manage payment and billing
+5. **Content Management** - Create and manage blog posts
 
-## 💳 Payment Integration
+## 💳 Subscription Plans
 
-CourseMind supports multiple payment gateways:
-- **Stripe** (Primary)
-- **PayPal**
-- **Paystack**
-- **Flutterwave**
+### Free Plan
+- Generate up to 5 subtopics per course
+- Basic course creation features
+- Standard support
 
-### Pricing Plans
-- **Free Plan** - Basic features
-- **Monthly Plan** - $5/month
-- **Yearly Plan** - $49/year
+### Premium Plans
+- **Monthly** ($5/month) - Unlimited course generation
+- **Yearly** ($49/year) - All premium features with savings
+
+### Payment Methods
+- **Stripe** (Credit/Debit Cards, Digital Wallets)
 
 ## 🌐 Supported Languages
 
-CourseMind supports 23 languages for course localization:
-Arabic, Chinese, Dutch, English, French, German, Hindi, Italian, Japanese, Korean, Portuguese, Russian, Spanish, Swedish, Turkish, and more.
+CourseMind supports course creation in 23 languages including:
+- English, Spanish, French, German, Italian
+- Portuguese, Russian, Japanese, Korean, Chinese
+- Arabic, Hindi, Bengali, and many more
 
-## ❓ FAQ
+## 🔒 Security Features
 
-### General Questions
+- **JWT Authentication** with secure token management
+- **Rate Limiting** to prevent abuse
+- **Input Sanitization** against XSS and injection attacks
+- **CORS Protection** with strict origin policies
+- **Helmet.js** security headers
+- **MongoDB Sanitization** for database security
 
-**Q: What is CourseMind?**  
-A: CourseMind is an AI-powered platform that helps educators and content creators generate high-quality courses quickly using advanced AI technology.
+## 🚀 Deployment
 
-**Q: How does the AI course generation work?**  
-A: Simply input your course topic, and our AI analyzes the content to create structured modules, assessments, and multimedia assets automatically.
+### Production Build
+```bash
+npm run build
+```
 
-**Q: Is CourseMind free?**  
-A: CourseMind offers a free tier with basic features. Premium plans start at $5/month with advanced AI capabilities.
+### Environment Setup
+Ensure production environment includes:
+- Node.js runtime (v18+)
+- MongoDB database
+- All required environment variables
+- SSL certificate for HTTPS
 
-### Technical Questions
+### Recommended Platforms
+- **Vercel** - Frontend deployment
+- **Railway** - Full-stack deployment
+- **DigitalOcean** - Custom infrastructure
+- **AWS** - Enterprise deployment
 
-**Q: What technologies does CourseMind use?**  
-A: Frontend: React, TypeScript, Vite, Tailwind CSS. Backend: Node.js, Express, MongoDB. AI: Google Generative AI.
+## 🧪 Development
 
-**Q: Can I self-host CourseMind?**  
-A: Yes, the codebase is available for self-hosting. Follow the installation instructions above.
+### Code Quality
+- **ESLint** configuration for code consistency
+- **TypeScript** strict mode enabled
+- **Prettier** formatting (via ESLint)
 
-**Q: Does CourseMind support multiple languages?**  
-A: Yes, CourseMind supports 23 languages for course content localization.
+### Testing Setup
+```bash
+# Install testing dependencies
+npm install --save-dev vitest @testing-library/react @testing-library/jest-dom
 
-### Account & Billing
-
-**Q: What payment methods are accepted?**  
-A: We accept Stripe, PayPal, Paystack, and Flutterwave payments.
-
-**Q: Can I cancel my subscription anytime?**  
-A: Yes, you can cancel your subscription at any time. You'll retain access until the end of your billing period.
-
-**Q: Do you offer refunds?**  
-A: Please refer to our refund policy for details on eligibility and process.
+# Add test scripts
+"test": "vitest",
+"test:ui": "vitest --ui"
+```
 
 ## 🤝 Contributing
 
-We welcome contributions! Please follow these steps:
+We welcome contributions! Please follow these guidelines:
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Commit your changes: `git commit -m 'Add your feature'`
-4. Push to the branch: `git push origin feature/your-feature`
-5. Open a Pull Request
+1. **Fork** the repository
+2. **Create** a feature branch: `git checkout -b feature/your-feature`
+3. **Commit** your changes: `git commit -m 'Add your feature'`
+4. **Push** to the branch: `git push origin feature/your-feature`
+5. **Open** a Pull Request
 
 ### Development Guidelines
 - Follow TypeScript best practices
-- Use ESLint configuration
 - Write meaningful commit messages
-- Test your changes thoroughly
+- Test changes thoroughly
+- Update documentation as needed
 
 ## 📄 License
 
-This project is proprietary software owned by MontaCoder.
+This project is proprietary software owned by **MontaCoder**. All rights reserved.
 
-## 📞 Contact
+## 📞 Contact & Support
 
 - **Company**: MontaCoder
-- **Website**: [coursemind.com](http://localhost:8080)
+- **Website**: [CourseMind Platform](http://localhost:8080)
 - **Email**: contact@montacoder.com
 - **GitHub**: [MontaCoder](https://github.com/MontaCoder)
 
 ## 🏆 Acknowledgments
 
-- Built with modern web technologies
-- Powered by Google's Generative AI
-- UI components from Radix UI
-- Icons from Lucide React
+- **Google Generative AI** for powering content creation
+- **Radix UI** for accessible component primitives
+- **Tailwind CSS** for utility-first styling
+- **TipTap** for rich text editing capabilities
+- **Lucide React** for beautiful icons
+- **Vercel** for deployment platform
 
 ---
+
+<div align="center">
 
 **CourseMind** - Revolutionizing online education with AI-powered course creation.
 
-## 🗺️ Roadmap
+*Built with ❤️ by the MontaCoder team*
 
-### Upcoming Features
-- [ ] Mobile app development (React Native)
-- [ ] Advanced AI models integration
-- [ ] Real-time collaboration tools
-- [ ] Enhanced analytics dashboard
-- [ ] API rate limiting and optimization
-- [ ] Multi-tenant architecture
-- [ ] Integration with popular LMS platforms
-- [ ] Advanced customization options
+[⭐ Star us on GitHub](https://github.com/MontaCoder/CourseMind) | [🐛 Report Issues](https://github.com/MontaCoder/CourseMind/issues) | [💬 Join Discussion](https://github.com/MontaCoder/CourseMind/discussions)
 
-### Recent Updates
-- ✅ AI-powered course generation
-- ✅ Multi-language support
-- ✅ Payment gateway integrations
-- ✅ PWA implementation
-- ✅ Admin panel and blog management
-
----
-
-**CourseMind** - Revolutionizing online education with AI-powered course creation. 🤖📚
+</div>
