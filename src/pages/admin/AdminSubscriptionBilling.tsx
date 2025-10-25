@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { serverURL } from '@/constants';
 import axios from 'axios';
+import { getToken } from '@/lib/apiClient';
 import { toast } from '@/hooks/use-toast';
 import { MinimalTiptapEditor } from '../../minimal-tiptap'
 import { Content } from '@tiptap/react'
@@ -16,7 +17,10 @@ const AdminSubscriptionBilling = () => {
   async function saveBilling() {
     setIsLoading(true);
     const postURL = serverURL + '/api/saveadmin';
-    const response = await axios.post(postURL, { data: value, type: 'billing' });
+    const token = getToken();
+    const response = await axios.post(postURL, { data: value, type: 'billing' }, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
     if (response.data.success) {
       sessionStorage.setItem('billing', '' + value);
       setIsLoading(false);

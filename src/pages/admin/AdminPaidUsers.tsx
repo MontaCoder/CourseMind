@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MonthType, serverURL } from '@/constants';
 import axios from 'axios';
+import { getToken } from '@/lib/apiClient';
 
 const AdminPaidUsers = () => {
 
@@ -28,7 +29,10 @@ const AdminPaidUsers = () => {
   useEffect(() => {
     async function dashboardData() {
       const postURL = serverURL + `/api/getpaid`;
-      const response = await axios.get(postURL);
+      const token = getToken();
+      const response = await axios.get(postURL, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       setData(response.data);
       setIsLoading(false);
     }

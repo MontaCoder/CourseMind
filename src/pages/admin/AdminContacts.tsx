@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { serverURL } from '@/constants';
 import axios from 'axios';
+import { getToken } from '@/lib/apiClient';
 import { Skeleton } from '@/components/ui/skeleton';
 
 // Sample contacts data
@@ -42,7 +43,10 @@ const AdminContacts = () => {
   useEffect(() => {
     async function dashboardData() {
       const postURL = serverURL + `/api/getcontact`;
-      const response = await axios.get(postURL);
+      const token = getToken();
+      const response = await axios.get(postURL, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       setData(response.data)
       setIsLoading(false);
     }
