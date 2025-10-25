@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-nocheck
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Accordion,
@@ -29,6 +29,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { appLogo, companyName, serverURL, websiteURL } from '@/constants';
 import axios from 'axios';
+import { getToken } from '@/lib/apiClient';
 import ShareOnSocial from 'react-share-on-social';
 import StyledText from '@/components/styledText';
 import html2pdf from 'html2pdf.js';
@@ -38,7 +39,21 @@ const CoursePage = () => {
   //ADDED FROM v4.0
   const { state } = useLocation();
   const { mainTopic, type, courseId, end, pass, lang } = state || {};
-  const jsonData = JSON.parse(sessionStorage.getItem('jsonData'));
+
+  const jsonDataRef = useRef(null);
+  if (jsonDataRef.current === null) {
+    const stored = sessionStorage.getItem('jsonData');
+    jsonDataRef.current = stored ? JSON.parse(stored) : null;
+  }
+
+  const jsonData = jsonDataRef.current;
+  const mainTopicKey = mainTopic?.toLowerCase();
+
+  const getCourseTopics = useCallback(() => {
+    const data = jsonDataRef.current;
+    if (!data || !mainTopicKey) return [];
+    return data[mainTopicKey] ?? [];
+  }, [mainTopicKey]);
   const [selected, setSelected] = useState('');
   const [theory, setTheory] = useState('');
   const [media, setMedia] = useState('');
@@ -64,7 +79,10 @@ const CoursePage = () => {
   async function getNotes() {
     try {
       const postURL = serverURL + '/api/getnotes';
-      const response = await axios.post(postURL, { course: courseId });
+      const token = getToken();
+      const response = await axios.post(postURL, { course: courseId }, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       if (response.data.success) {
         setValue(response.data.message);
       }
@@ -75,7 +93,10 @@ const CoursePage = () => {
 
   const handleSaveNote = async () => {
     const postURL = serverURL + '/api/savenotes';
-    const response = await axios.post(postURL, { course: courseId, notes: value });
+    const token = getToken();
+    const response = await axios.post(postURL, { course: courseId, notes: value }, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
     if (response.data.success) {
       toast({
         title: "Note saved",
@@ -226,9 +247,12 @@ const CoursePage = () => {
     const mainPrompt = defaultPrompt + newMessage;
     const dataToSend = { prompt: mainPrompt };
     const url = serverURL + '/api/chat';
+    const token = getToken();
 
     try {
-      const response = await axios.post(url, dataToSend);
+      const response = await axios.post(url, dataToSend, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       if (response.data.success === false) {
         toast({
           title: "Error",
@@ -310,9 +334,12 @@ const CoursePage = () => {
     const dataToSend = {
       prompt: prompt,
     };
+    const token = getToken();
     try {
       const postURL = serverURL + '/api/generate';
-      const res = await axios.post(postURL, dataToSend);
+      const res = await axios.post(postURL, dataToSend, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       const generatedText = res.data.text;
       const htmlContent = generatedText;
       try {
@@ -341,9 +368,12 @@ const CoursePage = () => {
     const dataToSend = {
       prompt: promptImage,
     };
+    const token = getToken();
     try {
       const postURL = serverURL + '/api/image';
-      const res = await axios.post(postURL, dataToSend);
+      const res = await axios.post(postURL, dataToSend, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       try {
         const generatedText = res.data.url;
         sendData(generatedText, parsedJson, topics, sub);
@@ -412,9 +442,12 @@ const CoursePage = () => {
       content: JSON.stringify(jsonData),
       courseId: courseId
     };
+    const token = getToken();
     try {
       const postURL = serverURL + '/api/update';
-      await axios.post(postURL, dataToSend);
+      await axios.post(postURL, dataToSend, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
     } catch (error) {
       console.error(error);
       toast({
@@ -429,9 +462,12 @@ const CoursePage = () => {
     const dataToSend = {
       prompt: query,
     };
+    const token = getToken();
     try {
       const postURL = serverURL + '/api/yt';
-      const res = await axios.post(postURL, dataToSend);
+      const res = await axios.post(postURL, dataToSend, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
 
       try {
         const generatedText = res.data.url;
@@ -459,9 +495,12 @@ const CoursePage = () => {
     const dataToSend = {
       prompt: url,
     };
+    const token = getToken();
     try {
       const postURL = serverURL + '/api/transcript';
-      const res = await axios.post(postURL, dataToSend);
+      const res = await axios.post(postURL, dataToSend, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
 
       try {
         const generatedText = res.data.url;
@@ -486,9 +525,12 @@ const CoursePage = () => {
     const dataToSend = {
       prompt: prompt,
     };
+    const token = getToken();
     try {
       const postURL = serverURL + '/api/generate';
-      const res = await axios.post(postURL, dataToSend);
+      const res = await axios.post(postURL, dataToSend, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       const generatedText = res.data.text;
       const htmlContent = generatedText;
       try {
@@ -650,7 +692,10 @@ const CoursePage = () => {
         subtopicsString = subtopicsString + ' , ' + titleOfSubTopic;
       });
       const postURL = serverURL + '/api/aiexam';
-      const response = await axios.post(postURL, { courseId, mainTopic, subtopicsString, lang });
+      const token = getToken();
+      const response = await axios.post(postURL, { courseId, mainTopic, subtopicsString, lang }, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       if (response.data.success) {
         setIsLoading(false);
         const questions = JSON.parse(response.data.message);
@@ -725,7 +770,10 @@ const CoursePage = () => {
       };
       try {
         const postURL = serverURL + '/api/finish';
-        const response = await axios.post(postURL, dataToSend);
+        const token = getToken();
+        const response = await axios.post(postURL, dataToSend, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
         if (response.data.success) {
           const today = new Date();
           const formattedDate = today.toLocaleDateString('en-GB');
@@ -780,7 +828,10 @@ const CoursePage = () => {
 
     try {
       const postURL = serverURL + '/api/sendcertificate';
-      await axios.post(postURL, { html, email }).then(res => {
+      const token = getToken();
+      await axios.post(postURL, { html, email }, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      }).then(res => {
         navigate('/course/'+courseId+'/certificate', { state: { courseTitle: mainTopic, end: formattedDate } });
       }).catch(error => {
         console.error(error);
