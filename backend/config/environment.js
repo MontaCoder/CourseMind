@@ -65,11 +65,6 @@ export const config = {
         secretKey: process.env.PAYSTACK_SECRET_KEY
     },
     
-    flutterwave: {
-        publicKey: process.env.FLUTTERWAVE_PUBLIC_KEY,
-        secretKey: process.env.FLUTTERWAVE_SECRET_KEY
-    },
-    
     website: {
         url: process.env.WEBSITE_URL,
         company: process.env.COMPANY,

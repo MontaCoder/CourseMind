@@ -31,8 +31,7 @@ export const PAYMENT_METHODS = {
     STRIPE: 'stripe',
     PAYPAL: 'paypal',
     RAZORPAY: 'razorpay',
-    PAYSTACK: 'paystack',
-    FLUTTERWAVE: 'flutterwave'
+    PAYSTACK: 'paystack'
 };
 
 export const EMAIL_CONFIG = {
