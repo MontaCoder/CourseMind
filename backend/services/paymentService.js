@@ -1,10 +1,8 @@
 import Stripe from 'stripe';
-import Flutterwave from 'flutterwave-node-v3';
 import axios from 'axios';
 import { config } from '../config/environment.js';
 
 const stripe = new Stripe(config.stripe.secretKey);
-const flw = new Flutterwave(config.flutterwave.publicKey, config.flutterwave.secretKey);
 
 
 function isValidPayPalSubscriptionId(id) {
@@ -308,16 +306,5 @@ export class PaymentService {
         return response.data;
     }
 
-    // Flutterwave
-    static async getFlutterwaveSubscription(email) {
-        const payload = { email };
-        const response = await flw.Subscription.get(payload);
-        return response['data'][0];
-    }
-
-    static async cancelFlutterwaveSubscription(subscriptionId) {
-        const payload = { id: subscriptionId };
-        return await flw.Subscription.cancel(payload);
-    }
 }
 

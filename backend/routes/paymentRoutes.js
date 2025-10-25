@@ -202,41 +202,6 @@ router.post('/paystackcancel', authenticateToken, validateRequired(['code', 'tok
     ApiResponse.success(res, {}, '');
 }));
 
-// FLUTTERWAVE PAYMENT
-router.post('/flutterdetails', authenticateToken, validateRequired(['email', 'uid', 'plan']), asyncHandler(async (req, res) => {
-    const { email, uid, plan } = req.body;
-
-    await SubscriptionService.activateUserSubscription(uid, plan);
-    const result = await PaymentService.getFlutterwaveSubscription(email);
-
-    res.send(result);
-}));
-
-router.post('/flutterwavecancel', authenticateToken, validateRequired(['code', 'token', 'email']), asyncHandler(async (req, res) => {
-    const { code, token, email } = req.body;
-
-    const response = await PaymentService.cancelFlutterwaveSubscription(code);
-
-    if (!response) {
-        return ApiResponse.error(res, 'Failed to cancel subscription');
-    }
-
-    const subscriptionDetails = await Subscription.findOne({ subscriberId: email });
-    const userId = subscriptionDetails.user;
-
-    await SubscriptionService.deactivateUserSubscription(userId);
-
-    const userDetails = await User.findOne({ _id: userId });
-    await Subscription.findOneAndDelete({ subscriberId: token });
-
-    const reactivateUrl = `${config.website.url}/pricing`;
-    const html = emailTemplates.subscriptionCancelled(userDetails.mName, reactivateUrl);
-
-    await sendEmail(email, `${userDetails.mName} Your Subscription Plan Has Been Cancelled`, html);
-
-    ApiResponse.success(res, {}, '');
-}));
-
 // SUBSCRIPTION DETAILS (MULTI-PROVIDER)
 router.post('/subscriptiondetail', authenticateToken, validateRequired(['uid', 'email']), asyncHandler(async (req, res) => {
     const { uid, email } = req.body;
@@ -256,9 +221,6 @@ router.post('/subscriptiondetail', authenticateToken, validateRequired(['uid', '
             break;
         case PAYMENT_METHODS.PAYPAL:
             session = await PaymentService.getPayPalSubscription(userDetails.subscription);
-            break;
-        case PAYMENT_METHODS.FLUTTERWAVE:
-            session = await PaymentService.getFlutterwaveSubscription(email);
             break;
         case PAYMENT_METHODS.PAYSTACK:
             session = await PaymentService.getPaystackSubscriptionDetails(userDetails.subscriberId);
