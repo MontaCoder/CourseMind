@@ -14,6 +14,7 @@ import SEO from '@/components/SEO';
 import { useToast } from '@/hooks/use-toast';
 import { serverURL } from '@/constants';
 import axios from 'axios';
+import { getToken } from '@/lib/apiClient';
 
 const courseFormSchema = z.object({
   topic: z.string().min(3, { message: "Topic must be at least 3 characters" }),
@@ -187,7 +188,10 @@ const GenerateCourse = () => {
     };
     try {
       const postURL = serverURL + '/api/prompt';
-      const res = await axios.post(postURL, dataToSend);
+      const token = getToken();
+      const res = await axios.post(postURL, dataToSend, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       const generatedText = res.data.generatedText;
       const cleanedJsonString = generatedText.replace(/```json/g, '').replace(/```/g, '');
       try {

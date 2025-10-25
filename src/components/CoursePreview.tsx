@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { serverURL } from '@/constants';
 import axios from 'axios';
 import { useToast } from '@/hooks/use-toast';
-
+import { getToken } from '@/lib/apiClient';
 
 interface CoursePreviewProps {
     isLoading: boolean;
@@ -59,9 +59,12 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
         const dataToSend = {
             prompt: prompt,
         };
+        const token = getToken();
         try {
             const postURL = serverURL + '/api/generate';
-            const res = await axios.post(postURL, dataToSend);
+            const res = await axios.post(postURL, dataToSend, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {}
+            });
             const generatedText = res.data.text;
             const htmlContent = generatedText;
 
@@ -91,9 +94,12 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
         const dataToSend = {
             prompt: promptImage,
         };
+        const token = getToken();
         try {
             const postURL = serverURL + '/api/image';
-            const res = await axios.post(postURL, dataToSend);
+            const res = await axios.post(postURL, dataToSend, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {}
+            });
             try {
                 const generatedText = res.data.url;
                 sendData(generatedText, parsedJson);
@@ -124,7 +130,10 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
         const user = sessionStorage.getItem('uid');
         const content = JSON.stringify(topics);
         const postURL = serverURL + '/api/course';
-        const response = await axios.post(postURL, { user, content, type, mainTopic: courseName, lang });
+        const token = getToken();
+        const response = await axios.post(postURL, { user, content, type, mainTopic: courseName, lang }, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
 
         if (response.data.success) {
             sessionStorage.setItem('courseId', response.data.courseId);
@@ -158,7 +167,10 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
         const user = sessionStorage.getItem('uid');
         const content = JSON.stringify(topics);
         const postURL = serverURL + '/api/course';
-        const response = await axios.post(postURL, { user, content, type, mainTopic: courseName, lang });
+        const token = getToken();
+        const response = await axios.post(postURL, { user, content, type, mainTopic: courseName, lang }, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
 
         if (response.data.success) {
             sessionStorage.setItem('courseId', response.data.courseId);
@@ -189,9 +201,12 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
         const dataToSend = {
             prompt: query,
         };
+        const token = getToken();
         try {
             const postURL = serverURL + '/api/yt';
-            const res = await axios.post(postURL, dataToSend);
+            const res = await axios.post(postURL, dataToSend, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {}
+            });
             try {
                 const generatedText = res.data.url;
                 sendTranscript(generatedText, subtopic);
@@ -218,9 +233,12 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
         const dataToSend = {
             prompt: url,
         };
+        const token = getToken();
         try {
             const postURL = serverURL + '/api/transcript';
-            const res = await axios.post(postURL, dataToSend);
+            const res = await axios.post(postURL, dataToSend, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {}
+            });
 
             try {
                 const generatedText = res.data.url;
@@ -243,9 +261,12 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
         const dataToSend = {
             prompt: prompt,
         };
+        const token = getToken();
         try {
             const postURL = serverURL + '/api/generate';
-            const res = await axios.post(postURL, dataToSend);
+            const res = await axios.post(postURL, dataToSend, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {}
+            });
             const generatedText = res.data.text;
             const htmlContent = generatedText;
 

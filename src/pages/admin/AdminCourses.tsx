@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { serverURL } from '@/constants';
 import axios from 'axios';
+import { getToken } from '@/lib/apiClient';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const AdminCourses = () => {
@@ -30,7 +31,10 @@ const AdminCourses = () => {
   useEffect(() => {
     async function dashboardData() {
       const postURL = serverURL + `/api/getcourses`;
-      const response = await axios.get(postURL);
+      const token = getToken();
+      const response = await axios.get(postURL, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       setData(response.data);
       setIsLoading(false);
     }
