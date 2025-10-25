@@ -14,7 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import axios from 'axios';
 import { serverURL } from '@/constants';
-
+import { getToken } from '@/lib/apiClient';
 
 enum QuizState {
     NotStarted,
@@ -44,9 +44,9 @@ const QuizPage = () => {
     }, []);
 
     const setQuizResult = () => {
-        const half = quizQuestions.length;
         const scor = getScore();
-        if (scor > half) {
+        const passingScore = Math.ceil(quizQuestions.length / 2); // 50% passing score
+        if (scor >= passingScore) {
             setPassed(true);
             updateResult(scor);
         } else {
@@ -57,7 +57,10 @@ const QuizPage = () => {
     async function updateResult(correct) {
         const marks = correct * 10;
         const marksString = "" + marks;
-        await axios.post(serverURL + '/api/updateresult', { courseId, marksString });
+        const token = getToken();
+        await axios.post(serverURL + '/api/updateresult', { courseId, marksString }, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
     }
 
 
