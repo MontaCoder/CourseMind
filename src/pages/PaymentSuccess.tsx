@@ -90,20 +90,6 @@ const PaymentSuccess = () => {
         sessionStorage.setItem('type', sessionStorage.getItem('plan'));
         sendEmail();
       });
-    } else if (sessionStorage.getItem('method') === 'flutterwave') {
-      const dataToSend = {
-        email: sessionStorage.getItem('email'),
-        uid: sessionStorage.getItem('uid'),
-        plan: sessionStorage.getItem('plan')
-      };
-      const postURL = serverURL + '/api/flutterdetails';
-      const token = getToken();
-      await axios.post(postURL, dataToSend, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      }).then(res => {
-        sessionStorage.setItem('type', sessionStorage.getItem('plan'));
-        sendEmail();
-      });
     } else {
       const subscriptionId = planId;
       const dataToSend = {
