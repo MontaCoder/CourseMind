@@ -20,6 +20,7 @@ import { MinimalTiptapEditor } from '../../minimal-tiptap'
 import { Content } from '@tiptap/react'
 import { serverURL } from '@/constants';
 import axios from 'axios';
+import { getToken } from '@/lib/apiClient';
 
 const AdminCreateBlog = () => {
   const [title, setTitle] = useState('');
@@ -59,9 +60,22 @@ const AdminCreateBlog = () => {
     e.preventDefault();
     setIsSubmitting(true);
 
+    // Validate required fields
+    if (!title || !excerpt || !content || !preview || !category || !tags) {
+      toast({
+        title: "Error",
+        description: "Please fill in all fields including uploading an image",
+      });
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       const postURL = serverURL + '/api/createblog';
-      const response = await axios.post(postURL, { title, excerpt, content, image: preview, category, tags });
+      const token = getToken();
+      const response = await axios.post(postURL, { title, excerpt, content, image: preview, category, tags }, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       if (response.data.success) {
         toast({
           title: "Blog post created",

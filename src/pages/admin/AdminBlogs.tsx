@@ -18,6 +18,7 @@ import { Search, Edit, Trash2, Eye, Plus, Calendar, StarOffIcon, TrendingUpIcon,
 import SEO from '@/components/SEO';
 import { serverURL } from '@/constants';
 import axios from 'axios';
+import { getToken } from '@/lib/apiClient';
 import { StarIcon } from '@radix-ui/react-icons';
 import { toast } from '@/hooks/use-toast';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -42,7 +43,6 @@ interface BlogPost {
     popular: boolean,
 }
 
-
 const AdminBlogs = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -51,7 +51,10 @@ const AdminBlogs = () => {
     useEffect(() => {
         async function dashboardData() {
             const postURL = serverURL + `/api/getblogs`;
-            const response = await axios.get(postURL);
+            const token = getToken();
+            const response = await axios.get(postURL, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {}
+            });
             // Process images immediately
             const processedData = response.data.map((post: BlogPost) => ({
                 ...post,
@@ -105,7 +108,10 @@ const AdminBlogs = () => {
     async function deleteBlog(id: string) {
         setIsLoading(true);
         const postURL = serverURL + '/api/deleteblogs';
-        const response = await axios.post(postURL, { id: id });
+        const token = getToken();
+        const response = await axios.post(postURL, { id: id }, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
         if (response.data.success) {
             setIsLoading(false);
             toast({
@@ -125,7 +131,10 @@ const AdminBlogs = () => {
     async function updateBlog(id: string, type: string, value: string) {
         setIsLoading(true);
         const postURL = serverURL + '/api/updateblogs';
-        const response = await axios.post(postURL, { id: id, type: type, value: value });
+        const token = getToken();
+        const response = await axios.post(postURL, { id: id, type: type, value: value }, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
         if (response.data.success) {
             setIsLoading(false);
             toast({
