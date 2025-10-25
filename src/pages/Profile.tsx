@@ -242,25 +242,6 @@ const Profile = () => {
         });
 
       }
-      else if (method === 'flutterwave') {
-        const dataToSends = {
-          code: jsonData.id,
-          token: jsonData.plan,
-          email: sessionStorage.getItem('email')
-        };
-        const postURL = serverURL + '/api/flutterwavecancel';
-        await axios.post(postURL, dataToSends, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        }).then(res => {
-          setProcessingCancel(false);
-          toast({
-            title: "Subscription Cancelled",
-            description: "Your subscription has been cancelled.",
-          });
-          sessionStorage.setItem('type', 'free');
-          window.location.href = websiteURL + '/dashboard/profile';
-        });
-      }
       else {
         const postURL = serverURL + '/api/razorpaycancel';
         await axios.post(postURL, dataToSend, {
