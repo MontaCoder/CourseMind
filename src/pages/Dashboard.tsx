@@ -8,8 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Link, useNavigate } from 'react-router-dom';
 import SEO from '@/components/SEO';
 import { appLogo, serverURL, websiteURL } from '@/constants';
-import axios from 'axios';
-import { getToken } from '@/lib/apiClient';
+import { api } from '@/lib/apiClient';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
@@ -33,57 +32,29 @@ const Dashboard = () => {
   }
 
   async function redirectCourse(content: string, mainTopic: string, type: string, courseId: string, completed: string, end: string) {
-    const postURL = serverURL + '/api/getmyresult';
-    const token = getToken();
-    const response = await axios.post(postURL, { courseId }, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    const { passed, lang } = await getQuiz(courseId);
+    const jsonData = JSON.parse(content);
+    sessionStorage.setItem('courseId', courseId);
+    sessionStorage.setItem('first', completed);
+    sessionStorage.setItem('jsonData', JSON.stringify(jsonData));
+    let ending = '';
+    if (completed) ending = end;
+    navigate('/course/' + courseId, {
+      state: {
+        jsonData,
+        mainTopic: mainTopic.toUpperCase(),
+        type: type.toLowerCase(),
+        courseId,
+        end: ending,
+        pass: passed,
+        lang
+      }
     });
-    if (response.data.success) {
-      const jsonData = JSON.parse(content);
-      sessionStorage.setItem('courseId', courseId);
-      sessionStorage.setItem('first', completed);
-      sessionStorage.setItem('jsonData', JSON.stringify(jsonData));
-      let ending = '';
-      if (completed) ending = end;
-      navigate('/course/' + courseId, {
-        state: {
-          jsonData,
-          mainTopic: mainTopic.toUpperCase(),
-          type: type.toLowerCase(),
-          courseId,
-          end: ending,
-          pass: response.data.message,
-          lang: response.data.lang
-        }
-      });
-    } else {
-      const jsonData = JSON.parse(content);
-      sessionStorage.setItem('courseId', courseId);
-      sessionStorage.setItem('first', completed);
-      sessionStorage.setItem('jsonData', JSON.stringify(jsonData));
-      let ending = '';
-      if (completed) ending = end;
-      navigate('/course/' + courseId, {
-        state: {
-          jsonData,
-          mainTopic: mainTopic.toUpperCase(),
-          type: type.toLowerCase(),
-          courseId,
-          end: ending,
-          pass: false,
-          lang: response.data.lang
-        }
-      });
-    }
   }
 
   const handleDeleteCourse = async (courseId: number) => {
     setIsLoading(true);
-    const postURL = serverURL + '/api/deletecourse';
-    const token = getToken();
-    const response = await axios.post(postURL, { courseId: courseId }, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {}
-    });
+    const response = await api.courses.delete({ courseId: courseId as unknown as string });
     if (response.data.success) {
       setIsLoading(false);
       toast({
@@ -103,18 +74,15 @@ const Dashboard = () => {
   const fetchUserCourses = useCallback(async () => {
     setIsLoading(page === 1);
     setLoadingMore(page > 1);
-    const postURL = `${serverURL}/api/courses?userId=${userId}&page=${page}&limit=9`;
-    const token = getToken();
     try {
-      const response = await axios.get(postURL, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      if (response.data.length === 0) {
+      const response = await api.courses.getAll({ userId: userId as string, page, limit: 9 });
+      const coursesData = response.data.data ?? response.data;
+      if (!coursesData || coursesData.length === 0) {
         setHasMore(false);
       } else {
         const progressMap = { ...courseProgress }; // Spread existing state
         const modulesMap = { ...modules }; // Spread existing state
-        for (const course of response.data) {
+        for (const course of coursesData) {
           const progress = await CountDoneTopics(course.content, course.mainTopic, course._id);
           const totalModules = await CountTotalTopics(course.content, course.mainTopic, course._id);
           progressMap[course._id] = progress;
@@ -122,7 +90,7 @@ const Dashboard = () => {
         }
         setCourseProgress(progressMap);
         setTotalModules(modulesMap);
-        await setCourses((prevCourses) => [...prevCourses, ...response.data]);
+        await setCourses((prevCourses) => [...prevCourses, ...coursesData]);
       }
     } catch (error) {
       console.error(error);
@@ -162,9 +130,9 @@ const Dashboard = () => {
           totalTopics++;
         });
       });
-      const quizCount = await getQuiz(courseId);
+      const quizInfo = await getQuiz(courseId);
       totalTopics = totalTopics + 1;
-      if (quizCount) {
+      if (quizInfo.passed) {
         totalTopics = totalTopics - 1;
       }
       const completionPercentage = Math.round((doneCount / totalTopics) * 100);
@@ -191,16 +159,15 @@ const Dashboard = () => {
     }
   }
 
-  async function getQuiz(courseId: string) {
-    const postURL = serverURL + '/api/getmyresult';
-    const token = getToken();
-    const response = await axios.post(postURL, { courseId }, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {}
-    });
-    if (response.data.success) {
-      return response.data.message;
-    } else {
-      return false;
+  async function getQuiz(courseId: string): Promise<{ passed: boolean; lang: string; }> {
+    try {
+      const response = await api.exam.getResult({ courseId });
+      const passed = Boolean(response.data.message);
+      const lang = response.data.lang ?? 'English';
+      return { passed, lang };
+    } catch (error) {
+      console.error(error);
+      return { passed: false, lang: 'English' };
     }
   }
 
