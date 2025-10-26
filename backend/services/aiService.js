@@ -40,7 +40,7 @@ export class AIService {
 
     static async generateExam(courseId, mainTopic, subtopicsString, lang) {
         const prompt = `Strictly in ${lang},
-        generate a strictly 10 question MCQ quiz on title ${mainTopic} based on each topics :- ${subtopicsString}, Atleast One question per topic. Add options A, B, C, D and only one correct answer. Give your repones Strictly inJSON format like this :-
+        generate a strictly 10 question MCQ quiz on title ${mainTopic} based on each topics :- ${subtopicsString}, Atleast One question per topic. Add options A, B, C, D and only one correct answer. Give your responses Strictly in JSON format like this :-
         {
           "${mainTopic}": [
             {
