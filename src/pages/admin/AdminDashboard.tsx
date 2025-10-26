@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-nocheck
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   ChartContainer,
@@ -12,19 +12,8 @@ import {
 import { Users, Play, RotateCcw, DollarSign } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { Skeleton } from '@/components/ui/skeleton';
-import { serverURL } from '@/constants';
-import axios from 'axios';
-import { getToken } from '@/lib/apiClient';
-
-const usersPieData = [
-  { name: 'Free', value: 0, color: '#F7F7F7' },
-  { name: 'Paid', value: 0, color: '#393E46' },
-];
-
-const coursesPieData = [
-  { name: 'Text', value: 0, color: '#393E46' },
-  { name: 'Video', value: 0, color: '#F7F7F7' },
-];
+import { api } from '@/lib/apiClient';
+import { useLocation } from 'react-router-dom';
 
 const userChartConfig = {
   free: { label: 'Free' },
@@ -38,35 +27,85 @@ const courseChartConfig = {
 
 const AdminDashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
-  const [data, setData] = useState({});
+  const [metrics, setMetrics] = useState({});
+  const [errorMessage, setErrorMessage] = useState('');
+  const location = useLocation();
 
   useEffect(() => {
+    if (location.pathname !== '/admin') {
+      return;
+    }
+
+    let isMounted = true;
+
     async function dashboardData() {
-      const postURL = serverURL + `/api/dashboard`;
-      const token = getToken();
-      const response = await axios.post(postURL, {}, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      sessionStorage.setItem('terms', response.data.admin.terms)
-      sessionStorage.setItem('privacy', response.data.admin.privacy)
-      sessionStorage.setItem('cancel', response.data.admin.cancel)
-      sessionStorage.setItem('refund', response.data.admin.refund)
-      sessionStorage.setItem('billing', response.data.admin.billing)
-      usersPieData[0].value = response.data.paid;
-      usersPieData[1].value = response.data.free;
-      coursesPieData[0].value = response.data.courses - response.data.videoType;
-      coursesPieData[1].value = response.data.videoType;
-      setData(response.data);
-      setIsLoading(false);
+      setIsLoading(true);
+      setErrorMessage('');
+
+      try {
+        const response = await api.admin.dashboard();
+        const payload = response?.data?.data ?? response?.data ?? {};
+        const admin = payload.admin ?? {};
+
+        sessionStorage.setItem('terms', admin.terms ?? '');
+        sessionStorage.setItem('privacy', admin.privacy ?? '');
+        sessionStorage.setItem('cancel', admin.cancel ?? '');
+        sessionStorage.setItem('refund', admin.refund ?? '');
+        sessionStorage.setItem('billing', admin.billing ?? '');
+
+        if (isMounted) {
+          setMetrics(payload);
+        }
+      } catch (error) {
+        console.error('Failed to load admin dashboard metrics', error);
+        const message = error?.response?.data?.message ?? 'Failed to load dashboard metrics';
+        if (isMounted) {
+          setErrorMessage(message);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
     }
     dashboardData();
-  }, []);
+    return () => {
+      isMounted = false;
+    };
+  }, [location.pathname]);
+
+  const usersPieData = useMemo(() => ([
+    { name: 'Free', value: metrics?.free ?? 0, color: '#94A3B8' },
+    { name: 'Paid', value: metrics?.paid ?? 0, color: '#2563EB' },
+  ]), [metrics]);
+
+  const coursesPieData = useMemo(() => {
+    const totalCourses = metrics?.courses ?? 0;
+    const videoCourses = metrics?.videoType ?? 0;
+    const textCourses = Math.max(totalCourses - videoCourses, 0);
+
+    return [
+      { name: 'Text', value: textCourses, color: '#0F172A' },
+      { name: 'Video', value: videoCourses, color: '#38BDF8' },
+    ];
+  }, [metrics]);
 
   return (
     <div className="space-y-8 animate-fade-in">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Admin Panel</h1>
       </div>
+
+      {errorMessage && !isLoading && (
+        <Card className="border-destructive/50 bg-destructive/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-destructive">Dashboard data unavailable</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-destructive">{errorMessage}</p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -94,7 +133,7 @@ const AdminDashboard = () => {
               </CardHeader>
               <CardContent className="flex items-center justify-between">
                 <Users className="h-8 w-8" />
-                <span className="text-3xl font-bold">{data.users}</span>
+                <span className="text-3xl font-bold">{metrics?.users ?? 0}</span>
               </CardContent>
             </Card>
 
@@ -104,7 +143,7 @@ const AdminDashboard = () => {
               </CardHeader>
               <CardContent className="flex items-center justify-between">
                 <Play className="h-8 w-8" />
-                <span className="text-3xl font-bold">{data.courses}</span>
+                <span className="text-3xl font-bold">{metrics?.courses ?? 0}</span>
               </CardContent>
             </Card>
 
@@ -114,7 +153,7 @@ const AdminDashboard = () => {
               </CardHeader>
               <CardContent className="flex items-center justify-between">
                 <RotateCcw className="h-8 w-8" />
-                <span className="text-3xl font-bold">${data.sum}</span>
+                <span className="text-3xl font-bold">${metrics?.sum ?? 0}</span>
               </CardContent>
             </Card>
 
@@ -124,7 +163,7 @@ const AdminDashboard = () => {
               </CardHeader>
               <CardContent className="flex items-center justify-between">
                 <DollarSign className="h-8 w-8" />
-                <span className="text-3xl font-bold">${data.total}</span>
+                <span className="text-3xl font-bold">${metrics?.total ?? 0}</span>
               </CardContent>
             </Card>
           </>
@@ -192,11 +231,11 @@ const AdminDashboard = () => {
                 </ChartContainer>
                 <div className="flex justify-center mt-4 space-x-6">
                   <div className="flex items-center">
-                    <div className="h-3 w-3 bg-gray-700 mr-2" />
+                    <div className="h-3 w-3 mr-2 rounded-sm" style={{ backgroundColor: usersPieData[1].color }} />
                     <span>Paid - {usersPieData[1].value}</span>
                   </div>
                   <div className="flex items-center">
-                    <div className="h-3 w-3 bg-gray-100 border border-border mr-2" />
+                    <div className="h-3 w-3 mr-2 rounded-sm" style={{ backgroundColor: usersPieData[0].color }} />
                     <span>Free - {usersPieData[0].value}</span>
                   </div>
                 </div>
@@ -231,11 +270,11 @@ const AdminDashboard = () => {
                 </ChartContainer>
                 <div className="flex justify-center mt-4 space-x-6">
                   <div className="flex items-center">
-                    <div className="h-3 w-3 bg-gray-700 mr-2" />
+                    <div className="h-3 w-3 mr-2 rounded-sm" style={{ backgroundColor: coursesPieData[0].color }} />
                     <span>Text - {coursesPieData[0].value}</span>
                   </div>
                   <div className="flex items-center">
-                    <div className="h-3 w-3 bg-gray-100 border border-border mr-2" />
+                    <div className="h-3 w-3 mr-2 rounded-sm" style={{ backgroundColor: coursesPieData[1].color }} />
                     <span>Video - {coursesPieData[1].value}</span>
                   </div>
                 </div>
