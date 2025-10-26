@@ -122,6 +122,9 @@ export const api = {
         
         sendCertificate: (data: { html: string; email: string }) =>
             apiClient.post('/api/sendcertificate', data),
+
+        checkAdmin: () =>
+            apiClient.post('/api/checkadmin', {}),
     },
     
     // Notes endpoints
@@ -148,10 +151,85 @@ export const api = {
             apiClient.post('/api/getmyresult', data),
     },
     
+    // Payment endpoints
+    payments: {
+        razorpayCreate: (data: { plan: string; email: string; fullAddress: string }) =>
+            apiClient.post('/api/razorpaycreate', data),
+
+        paystackPayment: (data: { planId: string; amountInZar: number; email: string }) =>
+            apiClient.post('/api/paystackpayment', data),
+
+        stripePayment: (data: { planId: string }) =>
+            apiClient.post('/api/stripepayment', data),
+
+        paypal: (data: { planId: string; email: string; name: string; lastName: string; post: string; address: string; country: string; admin?: string; brand?: string }) =>
+            apiClient.post('/api/paypal', data),
+
+        paypalDetails: (data: { subscriberId: string; uid: string; plan: string }) =>
+            apiClient.post('/api/paypaldetails', data),
+
+        paypalCancel: (data: { id: string; email: string }) =>
+            apiClient.post('/api/paypalcancel', data),
+
+        paypalUpdate: (data: { id: string; idPlan: string }) =>
+            apiClient.post('/api/paypalupdate', data),
+
+        stripeDetails: (data: { subscriberId: string; uid: string; plan: string }) =>
+            apiClient.post('/api/stripedetails', data),
+
+        stripeCancel: (data: { id: string; email: string }) =>
+            apiClient.post('/api/stripecancel', data),
+
+        razorpayPending: (data: { sub: string }) =>
+            apiClient.post('/api/razorapypending', data),
+
+        razorpayDetails: (data: { subscriberId: string; uid: string; plan: string }) =>
+            apiClient.post('/api/razorapydetails', data),
+
+        razorpayCancel: (data: { id: string; email: string }) =>
+            apiClient.post('/api/razorpaycancel', data),
+
+        paystackFetch: (data: { email: string; uid: string; plan: string }) =>
+            apiClient.post('/api/paystackfetch', data),
+
+        paystackCancel: (data: { code: string; token: string; email: string }) =>
+            apiClient.post('/api/paystackcancel', data),
+
+        subscriptionDetail: (data: { uid: string; email: string }) =>
+            apiClient.post('/api/subscriptiondetail', data),
+
+        sendReceipt: (data: { html: string; email: string; plan: string; subscriberId: string; user: string; method: string; subscription: string }) =>
+            apiClient.post('/api/sendreceipt', data),
+
+        downloadReceipt: (data: { html: string; email: string }) =>
+            apiClient.post('/api/downloadreceipt', data),
+    },
+
+    // AI endpoints
+    ai: {
+        prompt: (data: { prompt: string }) =>
+            apiClient.post('/api/prompt', data),
+
+        generate: (data: { prompt: string }) =>
+            apiClient.post('/api/generate', data),
+
+        chat: (data: { prompt: string }) =>
+            apiClient.post('/api/chat', data),
+
+        image: (data: { prompt: string }) =>
+            apiClient.post('/api/image', data),
+
+        transcript: (data: { prompt: string }) =>
+            apiClient.post('/api/transcript', data),
+
+        youtube: (data: { prompt: string }) =>
+            apiClient.post('/api/yt', data),
+    },
+    
     // Admin endpoints
     admin: {
         dashboard: () =>
-            apiClient.post('/api/dashboard'),
+            apiClient.post('/api/dashboard', {}),
         
         getUsers: () =>
             apiClient.get('/api/getusers'),
