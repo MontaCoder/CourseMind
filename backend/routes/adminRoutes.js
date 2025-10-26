@@ -28,35 +28,37 @@ router.post('/dashboard', authenticateToken, checkAdminAccess, asyncHandler(asyn
     const textType = await Course.countDocuments({ type: COURSE_TYPES.THEORY_IMAGE });
     const free = users - paid;
 
-    res.json({
-        users,
-        courses,
-        total,
-        sum,
-        paid,
-        videoType,
-        textType,
-        free,
-        admin
-    });
+    ApiResponse.success(res, {
+        data: {
+            users,
+            courses,
+            total,
+            sum,
+            paid,
+            videoType,
+            textType,
+            free,
+            admin
+        }
+    }, 'Dashboard metrics retrieved');
 }));
 
 // GET USERS
 router.get('/getusers', authenticateToken, checkAdminAccess, asyncHandler(async (req, res) => {
     const users = await User.find({});
-    res.json(users);
+    ApiResponse.success(res, { data: users }, 'Users retrieved successfully');
 }));
 
 // GET COURSES
 router.get('/getcourses', authenticateToken, checkAdminAccess, asyncHandler(async (req, res) => {
     const courses = await Course.find({});
-    res.json(courses);
+    ApiResponse.success(res, { data: courses }, 'Courses retrieved successfully');
 }));
 
 // GET PAID USERS
 router.get('/getpaid', authenticateToken, checkAdminAccess, asyncHandler(async (req, res) => {
     const paidUsers = await User.find({ type: { $ne: USER_TYPES.FREE } });
-    res.json(paidUsers);
+    ApiResponse.success(res, { data: paidUsers }, 'Paid users retrieved successfully');
 }));
 
 // GET ADMINS
@@ -65,7 +67,7 @@ router.get('/getadmins', authenticateToken, checkAdminAccess, asyncHandler(async
     const adminEmails = admins.map(admin => admin.email);
     const users = await User.find({ email: { $nin: adminEmails } });
 
-    res.json({ users, admins });
+    ApiResponse.success(res, { data: { users, admins } }, 'Admins retrieved successfully');
 }));
 
 // ADD ADMIN
@@ -108,7 +110,7 @@ router.post('/removeadmin', authenticateToken, checkAdminAccess, validateRequire
 // GET CONTACTS
 router.get('/getcontact', authenticateToken, checkAdminAccess, asyncHandler(async (req, res) => {
     const contacts = await Contact.find({});
-    res.json(contacts);
+    ApiResponse.success(res, { data: contacts }, 'Contacts retrieved successfully');
 }));
 
 // SAVE ADMIN SETTINGS
@@ -129,7 +131,7 @@ router.post('/saveadmin', authenticateToken, checkAdminAccess, validateRequired(
 // GET POLICIES
 router.get('/policies', asyncHandler(async (req, res) => {
     const admins = await Admin.find({});
-    res.json(admins);
+    ApiResponse.success(res, { data: admins }, 'Policies retrieved successfully');
 }));
 
 // CONTACT
@@ -180,7 +182,7 @@ router.post('/updateblogs', authenticateToken, checkAdminAccess, validateRequire
 // GET BLOGS
 router.get('/getblogs', asyncHandler(async (req, res) => {
     const blogs = await Blog.find({});
-    res.json(blogs);
+    ApiResponse.success(res, { data: blogs }, 'Blogs retrieved successfully');
 }));
 
 export default router;

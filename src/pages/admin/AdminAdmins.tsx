@@ -8,9 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircledIcon, CrossCircledIcon } from '@radix-ui/react-icons';
-import { serverURL } from '@/constants';
-import axios from 'axios';
-import { getToken } from '@/lib/apiClient';
+import { api } from '@/lib/apiClient';
 import { toast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -33,24 +31,17 @@ const AdminAdmins = () => {
 
   useEffect(() => {
     async function dashboardData() {
-      const postURL = serverURL + `/api/getadmins`;
-      const token = getToken();
-      const response = await axios.get(postURL, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      setAdmin(response.data.admins)
-      setUser(response.data.users)
-      setIsLoading(false)
+      const response = await api.admin.getAdmins();
+      const payload = response.data.data ?? response.data;
+      setAdmin(Array.isArray(payload.admins) ? payload.admins : []);
+      setUser(Array.isArray(payload.users) ? payload.users : []);
+      setIsLoading(false);
     }
     dashboardData();
   }, []);
 
   async function removeAdmin(email: string) {
-    const postURL = serverURL + '/api/removeadmin';
-    const token = getToken();
-    const response = await axios.post(postURL, { email }, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {}
-    });
+    const response = await api.admin.removeAdmin({ email });
     if (response.data.success) {
       toast({
         title: "Admin Removed",
@@ -60,17 +51,13 @@ const AdminAdmins = () => {
     } else {
       toast({
         title: "Error",
-        description: "Internal Server Error",
+        description: response.data.message ?? "Internal Server Error",
       });
     }
   }
 
   async function addAdmin(email: string) {
-    const postURL = serverURL + '/api/addadmin';
-    const token = getToken();
-    const response = await axios.post(postURL, { email }, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {}
-    });
+    const response = await api.admin.addAdmin({ email });
     if (response.data.success) {
       toast({
         title: "Admin Added",
@@ -80,7 +67,7 @@ const AdminAdmins = () => {
     } else {
       toast({
         title: "Error",
-        description: "Internal Server Error",
+        description: response.data.message ?? "Internal Server Error",
       });
     }
   }
