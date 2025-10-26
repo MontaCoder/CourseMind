@@ -9,10 +9,9 @@ import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowRight, Mail, Lock, User, AlertTriangle } from 'lucide-react';
-import { appLogo, appName, companyName, facebookClientId, serverURL, websiteURL } from '@/constants';
+import { appLogo, appName, companyName, facebookClientId, websiteURL } from '@/constants';
 import Logo from '../res/logo.svg';
-import axios from 'axios';
-import { setToken } from '@/lib/apiClient';
+import apiClient, { api, setToken } from '@/lib/apiClient';
 import { GoogleLogin } from '@react-oauth/google';
 import { jwtDecode, type JwtPayload } from "jwt-decode";
 import FacebookLogin from '@greatsumini/react-facebook-login';
@@ -20,15 +19,6 @@ import FacebookLogin from '@greatsumini/react-facebook-login';
 interface SocialJwtPayload extends JwtPayload {
   email?: string;
   name?: string;
-}
-
-interface SocialAuthResponse {
-  success: boolean;
-  message?: string;
-  userData: {
-    _id: string;
-    type: string;
-  };
 }
 
 interface FacebookProfile {
@@ -81,20 +71,21 @@ const Signup = () => {
 
     // This is where you would integrate signup logic
     try {
-      const postURL = serverURL + '/api/signup';
       const type = 'free';
 
-      const response = await axios.post(postURL, { email, mName: name, password, type });
+      const response = await api.auth.signup({ email, mName: name, password, type });
       if (response.data.success) {
+        const userType = response.data.user?.type ?? response.data.userData?.type ?? 'free';
         // Store JWT token
         if (response.data.token) {
           setToken(response.data.token);
         }
-        sessionStorage.setItem('email', email);
-        sessionStorage.setItem('mName', name);
+        const userPayload = response.data.user ?? response.data.userData;
+        sessionStorage.setItem('email', userPayload?.email ?? email);
+        sessionStorage.setItem('mName', userPayload?.mName ?? name);
         sessionStorage.setItem('auth', 'true');
         sessionStorage.setItem('uid', response.data.userId);
-        sessionStorage.setItem('type', 'free');
+        sessionStorage.setItem('type', userType);
         toast({
           title: "Account created!",
           description: "Welcome to " + appName + ".",
@@ -156,8 +147,7 @@ const Signup = () => {
                 
                 </html>`
       };
-      const postURL = serverURL + '/api/data';
-      await axios.post(postURL, dataToSend).then(res => {
+      await apiClient.post('/api/data', dataToSend).then(() => {
         redirectHome();
       }).catch(error => {
         console.error(error);
@@ -288,11 +278,9 @@ const Signup = () => {
                   setError('Missing Google profile information.');
                   return;
                 }
-                const postURL = serverURL + '/api/social';
                 try {
                   setIsLoading(true);
-                  const apiResponse = await axios.post<SocialAuthResponse>(postURL, { email, name });
-                  const { data } = apiResponse;
+                  const { data } = await api.auth.social({ email, name });
                   if (data.success) {
                     // Store JWT token
                     if ((data as any).token) {
@@ -343,18 +331,16 @@ const Signup = () => {
                 setIsLoading(false);
                 setError('Internal Server Error');
               }}
-              onProfileSuccess={async (profile: FacebookProfile) => {
+              onProfileSuccess={async (profile) => {
                 const email = profile.email;
                 const name = profile.name;
                 if (!email || !name) {
                   setError('Unable to fetch Facebook profile information.');
                   return;
                 }
-                const postURL = serverURL + '/api/social';
                 try {
                   setIsLoading(true);
-                  const apiResponse = await axios.post<SocialAuthResponse>(postURL, { email, name });
-                  const { data } = apiResponse;
+                  const { data } = await api.auth.social({ email, name });
                   if (data.success) {
                     // Store JWT token
                     if ((data as any).token) {

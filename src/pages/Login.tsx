@@ -8,10 +8,9 @@ import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowRight, Mail, Lock, AlertTriangle } from 'lucide-react';
-import { appName, facebookClientId, serverURL } from '@/constants';
+import { appName, facebookClientId } from '@/constants';
 import Logo from '../res/logo.svg';
-import axios from 'axios';
-import { setToken } from '@/lib/apiClient';
+import { api, setToken } from '@/lib/apiClient';
 import { GoogleLogin } from '@react-oauth/google';
 import { jwtDecode, type JwtPayload } from "jwt-decode";
 import FacebookLogin from '@greatsumini/react-facebook-login';
@@ -19,15 +18,6 @@ import FacebookLogin from '@greatsumini/react-facebook-login';
 interface SocialJwtPayload extends JwtPayload {
   email?: string;
   name?: string;
-}
-
-interface SocialAuthResponse {
-  success: boolean;
-  message?: string;
-  userData: {
-    _id: string;
-    type: string;
-  };
 }
 
 interface FacebookProfile {
@@ -68,9 +58,7 @@ const Login = () => {
 
     // This is where you would integrate authentication logic
     try {
-      // Simulate authentication delay
-      const postURL = serverURL + '/api/signin';
-      const response = await axios.post(postURL, { email, password });
+      const response = await api.auth.signin({ email, password });
       if (response.data.success) {
         // Store JWT token
         if (response.data.token) {
@@ -104,9 +92,8 @@ const Login = () => {
   };
 
   async function getDataFromDatabase(id: string) {
-    const postURL = serverURL + `/api/shareable?id=${id}`;
     try {
-      const response = await axios.get(postURL);
+      const response = await api.courses.getShared(id);
       const dat = response.data[0].content;
       const jsonData = JSON.parse(dat);
       const type = response.data[0].type.toLowerCase();
@@ -114,10 +101,11 @@ const Login = () => {
       const user = sessionStorage.getItem('uid');
       const content = JSON.stringify(jsonData);
 
-      const postURLs = serverURL + '/api/courseshared';
-      const token = localStorage.getItem('authToken');
-      const responses = await axios.post(postURLs, { user, content, type, mainTopic }, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      const responses = await api.courses.createShared({
+        user: user ?? '',
+        content,
+        type,
+        mainTopic
       });
       if (responses.data.success) {
         sessionStorage.removeItem('shared');
@@ -213,10 +201,9 @@ const Login = () => {
                   setError('Missing Google profile information.');
                   return;
                 }
-                const postURL = serverURL + '/api/social';
                 try {
                   setIsLoading(true);
-                  const apiResponse = await axios.post<SocialAuthResponse>(postURL, { email, name });
+                  const apiResponse = await api.auth.social({ email, name });
                   const { data } = apiResponse;
                   if (data.success) {
                     // Store JWT token
@@ -275,10 +262,9 @@ const Login = () => {
                   setError('Unable to fetch Facebook profile information.');
                   return;
                 }
-                const postURL = serverURL + '/api/social';
                 try {
                   setIsLoading(true);
-                  const apiResponse = await axios.post<SocialAuthResponse>(postURL, { email, name });
+                  const apiResponse = await api.auth.social({ email, name });
                   const { data } = apiResponse;
                   if (data.success) {
                     // Store JWT token
