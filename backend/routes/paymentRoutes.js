@@ -17,7 +17,7 @@ const router = express.Router();
 router.post('/stripepayment', authenticateToken, validateRequired(['planId']), asyncHandler(async (req, res) => {
     const { planId } = req.body;
     const result = await PaymentService.createStripeCheckout(planId);
-    res.json(result);
+    ApiResponse.success(res, { session: result }, 'Stripe checkout session created');
 }));
 
 router.post('/stripedetails', authenticateToken, validateRequired(['subscriberId', 'uid', 'plan']), asyncHandler(async (req, res) => {
@@ -26,7 +26,7 @@ router.post('/stripedetails', authenticateToken, validateRequired(['subscriberId
     await SubscriptionService.activateUserSubscription(uid, plan);
     const session = await PaymentService.retrieveStripeSession(subscriberId);
 
-    res.send(session);
+    ApiResponse.success(res, { session }, 'Stripe session retrieved');
 }));
 
 router.post('/stripecancel', authenticateToken, validateRequired(['id', 'email']), asyncHandler(async (req, res) => {
@@ -58,7 +58,7 @@ router.post('/paypal', authenticateToken, validateRequired(['planId', 'email', '
         planId, email, name, lastName, post, address, country
     );
 
-    res.send(session);
+    ApiResponse.success(res, { session }, 'PayPal subscription created');
 }));
 
 router.post('/paypaldetails', authenticateToken, validateRequired(['subscriberId', 'uid', 'plan']), asyncHandler(async (req, res) => {
@@ -67,7 +67,7 @@ router.post('/paypaldetails', authenticateToken, validateRequired(['subscriberId
     await SubscriptionService.activateUserSubscription(uid, plan);
     const session = await PaymentService.getPayPalSubscription(subscriberId);
 
-    res.send(session);
+    ApiResponse.success(res, { session }, 'PayPal subscription details');
 }));
 
 router.post('/paypalcancel', authenticateToken, validateRequired(['id', 'email']), asyncHandler(async (req, res) => {
@@ -96,7 +96,7 @@ router.post('/paypalupdate', authenticateToken, validateRequired(['id', 'idPlan'
 
     const session = await PaymentService.updatePayPalSubscription(id, idPlan);
 
-    res.send(session);
+    ApiResponse.success(res, { session }, 'PayPal subscription updated');
 }));
 
 router.post('/paypalupdateuser', authenticateToken, validateRequired(['id', 'mName', 'email', 'user', 'plan']), asyncHandler(async (req, res) => {
@@ -118,7 +118,7 @@ router.post('/razorpaycreate', authenticateToken, validateRequired(['plan', 'ema
 
     const result = await PaymentService.createRazorpaySubscription(plan, email, fullAddress);
 
-    res.send(result);
+    ApiResponse.success(res, { session: result }, 'Razorpay subscription created');
 }));
 
 router.post('/razorapydetails', authenticateToken, validateRequired(['subscriberId', 'uid', 'plan']), asyncHandler(async (req, res) => {
@@ -127,7 +127,7 @@ router.post('/razorapydetails', authenticateToken, validateRequired(['subscriber
     await SubscriptionService.activateUserSubscription(uid, plan);
     const result = await PaymentService.getRazorpaySubscription(subscriberId);
 
-    res.send(result);
+    ApiResponse.success(res, { session: result }, 'Razorpay subscription details');
 }));
 
 router.post('/razorapypending', authenticateToken, validateRequired(['sub']), asyncHandler(async (req, res) => {
@@ -135,7 +135,7 @@ router.post('/razorapypending', authenticateToken, validateRequired(['sub']), as
 
     const result = await PaymentService.getRazorpaySubscription(sub);
 
-    res.send(result);
+    ApiResponse.success(res, { session: result }, 'Razorpay subscription status');
 }));
 
 router.post('/razorpaycancel', authenticateToken, validateRequired(['id', 'email']), asyncHandler(async (req, res) => {
@@ -165,7 +165,7 @@ router.post('/paystackpayment', authenticateToken, validateRequired(['planId', '
 
     const result = await PaymentService.createPaystackPayment(planId, amountInZar, email);
 
-    res.json(result);
+    ApiResponse.success(res, { session: result }, 'Paystack payment initiated');
 }));
 
 router.post('/paystackfetch', authenticateToken, validateRequired(['email', 'uid', 'plan']), asyncHandler(async (req, res) => {
@@ -178,7 +178,7 @@ router.post('/paystackfetch', authenticateToken, validateRequired(['email', 'uid
         return ApiResponse.error(res, 'Subscription not found');
     }
 
-    res.json({ details });
+    ApiResponse.success(res, { details }, 'Paystack subscription details');
 }));
 
 router.post('/paystackcancel', authenticateToken, validateRequired(['code', 'token', 'email']), asyncHandler(async (req, res) => {
