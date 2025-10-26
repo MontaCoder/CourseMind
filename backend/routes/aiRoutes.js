@@ -3,11 +3,12 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { AIService } from '../services/aiService.js';
 import { MediaService } from '../services/mediaService.js';
 import { validateRequired } from '../middleware/validation.js';
+import { authenticateToken } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
 // GENERATE AI CONTENT (RAW TEXT)
-router.post('/prompt', validateRequired(['prompt']), asyncHandler(async (req, res) => {
+router.post('/prompt', authenticateToken, validateRequired(['prompt']), asyncHandler(async (req, res) => {
     const { prompt } = req.body;
 
     const generatedText = await AIService.generateContent(prompt);
@@ -16,7 +17,7 @@ router.post('/prompt', validateRequired(['prompt']), asyncHandler(async (req, re
 }));
 
 // GENERATE THEORY (HTML)
-router.post('/generate', validateRequired(['prompt']), asyncHandler(async (req, res) => {
+router.post('/generate', authenticateToken, validateRequired(['prompt']), asyncHandler(async (req, res) => {
     const { prompt } = req.body;
 
     const text = await AIService.generateHTML(prompt);
@@ -25,7 +26,7 @@ router.post('/generate', validateRequired(['prompt']), asyncHandler(async (req, 
 }));
 
 // CHAT
-router.post('/chat', validateRequired(['prompt']), asyncHandler(async (req, res) => {
+router.post('/chat', authenticateToken, validateRequired(['prompt']), asyncHandler(async (req, res) => {
     const { prompt } = req.body;
 
     const text = await AIService.generateHTML(prompt);
@@ -34,7 +35,7 @@ router.post('/chat', validateRequired(['prompt']), asyncHandler(async (req, res)
 }));
 
 // GET IMAGE
-router.post('/image', validateRequired(['prompt']), asyncHandler(async (req, res) => {
+router.post('/image', authenticateToken, validateRequired(['prompt']), asyncHandler(async (req, res) => {
     const { prompt } = req.body;
 
     const url = await MediaService.searchImage(prompt);
@@ -47,7 +48,7 @@ router.post('/image', validateRequired(['prompt']), asyncHandler(async (req, res
 }));
 
 // GET VIDEO
-router.post('/yt', validateRequired(['prompt']), asyncHandler(async (req, res) => {
+router.post('/yt', authenticateToken, validateRequired(['prompt']), asyncHandler(async (req, res) => {
     const { prompt } = req.body;
 
     const url = await MediaService.searchVideo(prompt);
@@ -56,7 +57,7 @@ router.post('/yt', validateRequired(['prompt']), asyncHandler(async (req, res) =
 }));
 
 // GET TRANSCRIPT
-router.post('/transcript', validateRequired(['prompt']), asyncHandler(async (req, res) => {
+router.post('/transcript', authenticateToken, validateRequired(['prompt']), asyncHandler(async (req, res) => {
     const { prompt } = req.body;
 
     const url = await MediaService.getVideoTranscript(prompt);
