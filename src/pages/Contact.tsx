@@ -16,7 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, MessageSquare, Send, Check } from 'lucide-react';
 import SEO from '@/components/SEO';
 import { appName, serverURL } from '@/constants';
-import axios from 'axios';
+import { api } from '@/lib/apiClient';
 
 const Contact = () => {
   const [name, setName] = useState('');
@@ -33,7 +33,7 @@ const Contact = () => {
 
     // Simulate API request
     const postURL = serverURL + '/api/contact';
-    const response = await axios.post(postURL, { fname: name, lname: subject, email, phone: '', msg: message });
+    const response = await api.admin.contact({ fname: name, lname: subject, email, phone: '', msg: message });
     if (response.data.success) {
       toast({
         title: "Message sent",
