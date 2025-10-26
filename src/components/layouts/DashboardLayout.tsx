@@ -21,12 +21,11 @@ import { Home, User, DollarSign, LogOut, Sparkles, Menu, Settings2Icon } from 'l
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { appName, serverURL, websiteURL } from '@/constants';
+import { appName, websiteURL } from '@/constants';
 import Logo from '../../res/logo.svg';
 import { DownloadIcon } from '@radix-ui/react-icons';
 import { useToast } from '@/hooks/use-toast';
-import axios from 'axios';
-import { getToken } from '@/lib/apiClient';
+import { api } from '@/lib/apiClient';
 
 const DashboardLayout = () => {
   const isMobile = useIsMobile();
@@ -42,15 +41,12 @@ const DashboardLayout = () => {
       window.location.href = websiteURL + '/login';
     }
     async function dashboardData() {
-      const postURL = serverURL + `/api/checkadmin`;
-      const token = getToken();
       try {
-        const response = await axios.post(postURL, {}, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        });
-        if (response.data.admin && response.data.admin.email) {
-          sessionStorage.setItem('adminEmail', response.data.admin.email);
-          if (response.data.admin.email === sessionStorage.getItem('email')) {
+        const response = await api.courses.checkAdmin();
+        const adminEmail = response.data?.admin?.email;
+        if (adminEmail) {
+          sessionStorage.setItem('adminEmail', adminEmail);
+          if (adminEmail === sessionStorage.getItem('email')) {
             setAdmin(true);
           }
         }

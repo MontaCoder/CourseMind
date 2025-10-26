@@ -33,9 +33,8 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { serverURL } from '@/constants';
-import axios from 'axios';
 import Logo from '../../res/logo.svg';
+import { api } from '@/lib/apiClient';
 
 const AdminLayout = () => {
   const isMobile = useIsMobile();
@@ -51,14 +50,15 @@ const AdminLayout = () => {
 
   useEffect(() => {
     async function dashboardData() {
-      const postURL = serverURL + `/api/dashboard`;
-      const token = getToken();
       try {
-        const response = await axios.post(postURL, {}, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        });
-        sessionStorage.setItem('adminEmail', response.data.admin.email);
-        if (response.data.admin.email !== sessionStorage.getItem('email')) {
+        const response = await api.admin.dashboard();
+        const admin = response.data.admin ?? response.data.data?.admin;
+        if (!admin?.email) {
+          throw new Error('Missing admin session');
+        }
+
+        sessionStorage.setItem('adminEmail', admin.email);
+        if (admin.email !== sessionStorage.getItem('email')) {
           redirectHome();
         }
       } catch (error) {
