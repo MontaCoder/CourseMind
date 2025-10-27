@@ -27,9 +27,8 @@ import { useForm } from 'react-hook-form';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { appLogo, companyName, serverURL, websiteURL } from '@/constants';
-import axios from 'axios';
-import { getToken } from '@/lib/apiClient';
+import { appLogo, companyName, websiteURL } from '@/constants';
+import { api } from '@/lib/apiClient';
 import ShareOnSocial from 'react-share-on-social';
 import StyledText from '@/components/styledText';
 import html2pdf from 'html2pdf.js';
@@ -78,34 +77,26 @@ const CoursePage = () => {
 
   async function getNotes() {
     try {
-      const postURL = serverURL + '/api/getnotes';
-      const token = getToken();
-      const response = await axios.post(postURL, { course: courseId }, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      if (response.data.success) {
-        setValue(response.data.message);
-      }
+      const response = await api.notes.get({ course: courseId });
+      const notesContent = response.data?.message ?? '';
+      setValue(notesContent);
     } catch (error) {
-      console.error(error)
+      console.error(error);
     }
   }
 
   const handleSaveNote = async () => {
-    const postURL = serverURL + '/api/savenotes';
-    const token = getToken();
-    const response = await axios.post(postURL, { course: courseId, notes: value }, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {}
-    });
-    if (response.data.success) {
+    try {
+      const response = await api.notes.save({ course: courseId, notes: value });
       toast({
         title: "Note saved",
-        description: "Your note has been saved successfully.",
+        description: response.data?.message ?? "Your note has been saved successfully.",
       });
-    } else {
+    } catch (error) {
+      console.error(error);
       toast({
         title: "Error",
-        description: "Internal Server Error",
+        description: "Failed to save note. Please try again.",
       });
     }
   };
@@ -246,24 +237,12 @@ const CoursePage = () => {
 
     const mainPrompt = defaultPrompt + newMessage;
     const dataToSend = { prompt: mainPrompt };
-    const url = serverURL + '/api/chat';
-    const token = getToken();
-
     try {
-      const response = await axios.post(url, dataToSend, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      if (response.data.success === false) {
-        toast({
-          title: "Error",
-          description: "Internal Server Error",
-        });
-      } else {
-        const botMessage = { text: response.data.text, sender: 'bot' };
-        const updatedMessagesWithBot = [...updatedMessages, botMessage];
-        setMessages(updatedMessagesWithBot);
-        await storeLocal(updatedMessagesWithBot);
-      }
+      const response = await api.ai.chat({ prompt: mainPrompt });
+      const botMessage = { text: response.data?.content ?? '', sender: 'bot' };
+      const updatedMessagesWithBot = [...updatedMessages, botMessage];
+      setMessages(updatedMessagesWithBot);
+      await storeLocal(updatedMessagesWithBot);
     } catch (error) {
       toast({
         title: "Error",
@@ -334,13 +313,9 @@ const CoursePage = () => {
     const dataToSend = {
       prompt: prompt,
     };
-    const token = getToken();
     try {
-      const postURL = serverURL + '/api/generate';
-      const res = await axios.post(postURL, dataToSend, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      const generatedText = res.data.text;
+      const res = await api.ai.generate(dataToSend);
+      const generatedText = res.data?.content;
       const htmlContent = generatedText;
       try {
         const parsedJson = htmlContent;
@@ -368,14 +343,10 @@ const CoursePage = () => {
     const dataToSend = {
       prompt: promptImage,
     };
-    const token = getToken();
     try {
-      const postURL = serverURL + '/api/image';
-      const res = await axios.post(postURL, dataToSend, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
+      const res = await api.ai.image(dataToSend);
       try {
-        const generatedText = res.data.url;
+        const generatedText = res.data?.url;
         sendData(generatedText, parsedJson, topics, sub);
       } catch (error) {
         console.error(error);
@@ -442,12 +413,8 @@ const CoursePage = () => {
       content: JSON.stringify(jsonData),
       courseId: courseId
     };
-    const token = getToken();
     try {
-      const postURL = serverURL + '/api/update';
-      await axios.post(postURL, dataToSend, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
+      await api.courses.update(dataToSend);
     } catch (error) {
       console.error(error);
       toast({
@@ -462,15 +429,11 @@ const CoursePage = () => {
     const dataToSend = {
       prompt: query,
     };
-    const token = getToken();
     try {
-      const postURL = serverURL + '/api/yt';
-      const res = await axios.post(postURL, dataToSend, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
+      const res = await api.ai.youtube(dataToSend);
 
       try {
-        const generatedText = res.data.url;
+        const generatedText = res.data?.url;
         sendTranscript(generatedText, mTopic, mSubTopic, subtop);
       } catch (error) {
         console.error(error);
@@ -495,15 +458,11 @@ const CoursePage = () => {
     const dataToSend = {
       prompt: url,
     };
-    const token = getToken();
     try {
-      const postURL = serverURL + '/api/transcript';
-      const res = await axios.post(postURL, dataToSend, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
+      const res = await api.ai.transcript(dataToSend);
 
       try {
-        const generatedText = res.data.url;
+        const generatedText = res.data?.url;
         const allText = generatedText.map(item => item.text);
         const concatenatedText = allText.join(' ');
         const prompt = `Strictly in ${lang}, Summarize this theory in a teaching way :- ${concatenatedText}.`;
@@ -525,13 +484,9 @@ const CoursePage = () => {
     const dataToSend = {
       prompt: prompt,
     };
-    const token = getToken();
     try {
-      const postURL = serverURL + '/api/generate';
-      const res = await axios.post(postURL, dataToSend, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      const generatedText = res.data.text;
+      const res = await api.ai.generate(dataToSend);
+      const generatedText = res.data?.content;
       const htmlContent = generatedText;
       try {
         const parsedJson = htmlContent;
@@ -691,16 +646,21 @@ const CoursePage = () => {
         const titleOfSubTopic = topicTemp.title;
         subtopicsString = subtopicsString + ' , ' + titleOfSubTopic;
       });
-      const postURL = serverURL + '/api/aiexam';
-      const token = getToken();
-      const response = await axios.post(postURL, { courseId, mainTopic, subtopicsString, lang }, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      if (response.data.success) {
-        setIsLoading(false);
-        const questions = JSON.parse(response.data.message);
-        navigate('/course/'+ courseId +'/quiz', { state: { topic: mainTopic, courseId: courseId, questions: questions } });
-      } else {
+      try {
+        const response = await api.exam.generate({ courseId, mainTopic, subtopicsString, lang });
+        if (response.data?.success) {
+          setIsLoading(false);
+          const questions = JSON.parse(response.data?.message ?? '[]');
+          navigate('/course/'+ courseId +'/quiz', { state: { topic: mainTopic, courseId: courseId, questions: questions } });
+        } else {
+          setIsLoading(false);
+          toast({
+            title: "Error",
+            description: response.data?.message ?? "Internal Server Error",
+          });
+        }
+      } catch (error) {
+        console.error(error);
         setIsLoading(false);
         toast({
           title: "Error",
@@ -769,12 +729,8 @@ const CoursePage = () => {
         courseId: courseId
       };
       try {
-        const postURL = serverURL + '/api/finish';
-        const token = getToken();
-        const response = await axios.post(postURL, dataToSend, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        });
-        if (response.data.success) {
+        const response = await api.courses.finish(dataToSend);
+        if (response.data?.success) {
           const today = new Date();
           const formattedDate = today.toLocaleDateString('en-GB');
           sessionStorage.setItem('first', 'true');
@@ -827,17 +783,8 @@ const CoursePage = () => {
                 </html>`;
 
     try {
-      const postURL = serverURL + '/api/sendcertificate';
-      const token = getToken();
-      await axios.post(postURL, { html, email }, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      }).then(res => {
-        navigate('/course/'+courseId+'/certificate', { state: { courseTitle: mainTopic, end: formattedDate } });
-      }).catch(error => {
-        console.error(error);
-        navigate('/course/'+courseId+'/certificate', { state: { courseTitle: mainTopic, end: formattedDate } });
-      });
-
+      await api.courses.sendCertificate({ html, email });
+      navigate('/course/'+courseId+'/certificate', { state: { courseTitle: mainTopic, end: formattedDate } });
     } catch (error) {
       console.error(error);
       navigate('/course/'+courseId+'/certificate', { state: { courseTitle: mainTopic, end: formattedDate } });

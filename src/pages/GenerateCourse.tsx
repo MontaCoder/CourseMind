@@ -12,9 +12,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import CoursePreview from '@/components/CoursePreview';
 import SEO from '@/components/SEO';
 import { useToast } from '@/hooks/use-toast';
-import { serverURL } from '@/constants';
-import axios from 'axios';
-import { getToken } from '@/lib/apiClient';
+import { api } from '@/lib/apiClient';
 
 const courseFormSchema = z.object({
   topic: z.string().min(3, { message: "Topic must be at least 3 characters" }),
@@ -187,13 +185,13 @@ const GenerateCourse = () => {
       prompt: prompt,
     };
     try {
-      const postURL = serverURL + '/api/prompt';
-      const token = getToken();
-      const res = await axios.post(postURL, dataToSend, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      const generatedText = res.data.generatedText;
+      const res = await api.ai.prompt(dataToSend);
+      if (!res.data.success) {
+        throw new Error(res.data.message ?? 'Failed to generate content');
+      }
+      const generatedText = res.data.content;
       const cleanedJsonString = generatedText.replace(/```json/g, '').replace(/```/g, '');
+
       try {
         const parsedJson = JSON.parse(cleanedJsonString);
         setGeneratedTopics(parsedJson)
