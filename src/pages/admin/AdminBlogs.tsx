@@ -16,9 +16,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { Search, Edit, Trash2, Eye, Plus, Calendar, StarOffIcon, TrendingUpIcon, TrendingDownIcon, MoreVertical } from 'lucide-react';
 import SEO from '@/components/SEO';
-import { serverURL } from '@/constants';
-import axios from 'axios';
-import { getToken } from '@/lib/apiClient';
+import { api } from '@/lib/apiClient';
+
 import { StarIcon } from '@radix-ui/react-icons';
 import { toast } from '@/hooks/use-toast';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -50,13 +49,11 @@ const AdminBlogs = () => {
 
     useEffect(() => {
         async function dashboardData() {
-            const postURL = serverURL + `/api/getblogs`;
-            const token = getToken();
-            const response = await axios.get(postURL, {
-                headers: token ? { Authorization: `Bearer ${token}` } : {}
-            });
+            const response = await api.admin.getBlogs();
+            const payload = response.data.data ?? response.data;
+            const blogs = Array.isArray(payload) ? payload : [];
             // Process images immediately
-            const processedData = response.data.map((post: BlogPost) => ({
+            const processedData = blogs.map((post: BlogPost) => ({
                 ...post,
                 imageUrl: getImage(post.image)
             }));
@@ -64,6 +61,7 @@ const AdminBlogs = () => {
             setData(processedData);
             setIsLoading(false);
         }
+
         dashboardData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -107,11 +105,7 @@ const AdminBlogs = () => {
 
     async function deleteBlog(id: string) {
         setIsLoading(true);
-        const postURL = serverURL + '/api/deleteblogs';
-        const token = getToken();
-        const response = await axios.post(postURL, { id: id }, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {}
-        });
+        const response = await api.admin.deleteBlogs({ id });
         if (response.data.success) {
             setIsLoading(false);
             toast({
@@ -123,18 +117,14 @@ const AdminBlogs = () => {
             setIsLoading(false);
             toast({
                 title: "Error",
-                description: "Internal Server Error",
+                description: response.data.message ?? "Internal Server Error",
             });
         }
     }
 
     async function updateBlog(id: string, type: string, value: string) {
         setIsLoading(true);
-        const postURL = serverURL + '/api/updateblogs';
-        const token = getToken();
-        const response = await axios.post(postURL, { id: id, type: type, value: value }, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {}
-        });
+        const response = await api.admin.updateBlogs({ id, type, value });
         if (response.data.success) {
             setIsLoading(false);
             toast({
@@ -146,7 +136,7 @@ const AdminBlogs = () => {
             setIsLoading(false);
             toast({
                 title: "Error",
-                description: "Internal Server Error",
+                description: response.data.message ?? "Internal Server Error",
             });
         }
     }
