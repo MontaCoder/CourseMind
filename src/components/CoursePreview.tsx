@@ -6,10 +6,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, Loader } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { serverURL } from '@/constants';
-import axios from 'axios';
 import { useToast } from '@/hooks/use-toast';
-import { getToken } from '@/lib/apiClient';
+import { api } from '@/lib/apiClient';
 
 interface CoursePreviewProps {
     isLoading: boolean;
@@ -59,13 +57,12 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
         const dataToSend = {
             prompt: prompt,
         };
-        const token = getToken();
         try {
-            const postURL = serverURL + '/api/generate';
-            const res = await axios.post(postURL, dataToSend, {
-                headers: token ? { Authorization: `Bearer ${token}` } : {}
-            });
-            const generatedText = res.data.text;
+            const res = await api.ai.generate(dataToSend);
+            if (!res.data.success) {
+                throw new Error(res.data.message ?? 'Failed to generate content');
+            }
+            const generatedText = res.data.text ?? res.data.content;
             const htmlContent = generatedText;
 
             try {
@@ -94,14 +91,13 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
         const dataToSend = {
             prompt: promptImage,
         };
-        const token = getToken();
         try {
-            const postURL = serverURL + '/api/image';
-            const res = await axios.post(postURL, dataToSend, {
-                headers: token ? { Authorization: `Bearer ${token}` } : {}
-            });
+            const res = await api.ai.image(dataToSend);
+            if (!res.data.success) {
+                throw new Error(res.data.message ?? 'Failed to generate image');
+            }
             try {
-                const generatedText = res.data.url;
+                const generatedText = res.data.url ?? res.data.image;
                 sendData(generatedText, parsedJson);
                 setIsLoadingCourse(false);
             } catch (error) {
@@ -129,22 +125,19 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
 
         const user = sessionStorage.getItem('uid');
         const content = JSON.stringify(topics);
-        const postURL = serverURL + '/api/course';
-        const token = getToken();
-        const response = await axios.post(postURL, { user, content, type, mainTopic: courseName, lang }, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {}
-        });
+        const response = await api.courses.create({ user, content, type, mainTopic: courseName, lang });
 
         if (response.data.success) {
-            sessionStorage.setItem('courseId', response.data.courseId);
-            sessionStorage.setItem('first', response.data.completed);
+            sessionStorage.setItem('courseId', response.data.data?.courseId ?? response.data.courseId);
+            sessionStorage.setItem('first', response.data.data?.completed ?? response.data.completed);
             sessionStorage.setItem('jsonData', JSON.stringify(topics));
-            navigate('/course/' + response.data.courseId, {
+            const courseId = response.data.data?.courseId ?? response.data.courseId;
+            navigate('/course/' + courseId, {
                 state: {
                     jsonData: topics,
                     mainTopic: courseName.toUpperCase(),
                     type: type.toLowerCase(),
-                    courseId: response.data.courseId,
+                    courseId,
                     end: '',
                     pass: false,
                     lang: lang
@@ -166,22 +159,19 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
 
         const user = sessionStorage.getItem('uid');
         const content = JSON.stringify(topics);
-        const postURL = serverURL + '/api/course';
-        const token = getToken();
-        const response = await axios.post(postURL, { user, content, type, mainTopic: courseName, lang }, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {}
-        });
+        const response = await api.courses.create({ user, content, type, mainTopic: courseName, lang });
 
         if (response.data.success) {
-            sessionStorage.setItem('courseId', response.data.courseId);
-            sessionStorage.setItem('first', response.data.completed);
+            sessionStorage.setItem('courseId', response.data.data?.courseId ?? response.data.courseId);
+            sessionStorage.setItem('first', response.data.data?.completed ?? response.data.completed);
             sessionStorage.setItem('jsonData', JSON.stringify(topics));
-            navigate('/course/' + response.data.courseId, {
+            const courseId = response.data.data?.courseId ?? response.data.courseId;
+            navigate('/course/' + courseId, {
                 state: {
                     jsonData: topics,
                     mainTopic: courseName.toUpperCase(),
                     type: type.toLowerCase(),
-                    courseId: response.data.courseId,
+                    courseId,
                     end: '',
                     pass: false,
                     lang: lang
@@ -201,14 +191,13 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
         const dataToSend = {
             prompt: query,
         };
-        const token = getToken();
         try {
-            const postURL = serverURL + '/api/yt';
-            const res = await axios.post(postURL, dataToSend, {
-                headers: token ? { Authorization: `Bearer ${token}` } : {}
-            });
+            const res = await api.ai.youtube(dataToSend);
+            if (!res.data.success) {
+                throw new Error(res.data.message ?? 'Failed to fetch video');
+            }
             try {
-                const generatedText = res.data.url;
+                const generatedText = res.data.url ?? res.data.video;
                 sendTranscript(generatedText, subtopic);
             } catch (error) {
                 setIsLoadingCourse(false);
@@ -233,16 +222,16 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
         const dataToSend = {
             prompt: url,
         };
-        const token = getToken();
         try {
-            const postURL = serverURL + '/api/transcript';
-            const res = await axios.post(postURL, dataToSend, {
-                headers: token ? { Authorization: `Bearer ${token}` } : {}
-            });
+            const res = await api.ai.transcript(dataToSend);
+            if (!res.data.success) {
+                throw new Error(res.data.message ?? 'Failed to fetch transcript');
+            }
 
             try {
-                const generatedText = res.data.url;
+                const generatedText = res.data.url ?? res.data.transcript;
                 const allText = generatedText.map(item => item.text);
+
                 const concatenatedText = allText.join(' ');
                 const prompt = `Strictly in ${lang}, Summarize this theory in a teaching way and :- ${concatenatedText}.`;
                 sendSummery(prompt, url);
@@ -261,13 +250,12 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
         const dataToSend = {
             prompt: prompt,
         };
-        const token = getToken();
         try {
-            const postURL = serverURL + '/api/generate';
-            const res = await axios.post(postURL, dataToSend, {
-                headers: token ? { Authorization: `Bearer ${token}` } : {}
-            });
-            const generatedText = res.data.text;
+            const res = await api.ai.generate(dataToSend);
+            if (!res.data.success) {
+                throw new Error(res.data.message ?? 'Failed to generate summary');
+            }
+            const generatedText = res.data.text ?? res.data.content;
             const htmlContent = generatedText;
 
             try {
