@@ -24,7 +24,7 @@ router.post('/course', authenticateToken, validateRequired(['user', 'content', '
     const newLang = new Lang({ course: newCourse._id, lang });
     await newLang.save();
 
-    ApiResponse.success(res, { courseId: newCourse._id }, 'Course created successfully');
+    ApiResponse.success(res, { courseId: newCourse._id, completed: newCourse.completed }, 'Course created successfully');
 }));
 
 // STORE SHARED COURSE
@@ -36,7 +36,7 @@ router.post('/courseshared', authenticateToken, validateRequired(['user', 'conte
     const newCourse = new Course({ user, content, type, mainTopic, photo });
     await newCourse.save();
 
-    ApiResponse.success(res, { courseId: newCourse._id }, 'Course created successfully');
+    ApiResponse.success(res, { courseId: newCourse._id, completed: newCourse.completed }, 'Course created successfully');
 }));
 
 // UPDATE COURSE
@@ -112,7 +112,7 @@ router.post('/getnotes', authenticateToken, validateRequired(['course']), asyncH
         return ApiResponse.success(res, { message: existingNotes.notes }, '');
     }
 
-    return ApiResponse.error(res, '', HTTP_STATUS.NOT_FOUND);
+    return ApiResponse.success(res, { message: '' }, 'Notes not found', HTTP_STATUS.OK);
 }));
 
 // SAVE NOTES
@@ -184,7 +184,7 @@ router.post('/getmyresult', authenticateToken, validateRequired(['courseId']), a
         return ApiResponse.success(res, { message: existingExam.passed, lang: langValue }, '');
     }
 
-    return ApiResponse.error(res, '', HTTP_STATUS.NOT_FOUND, { message: false, lang: langValue });
+    return ApiResponse.success(res, { message: false, lang: langValue }, 'Exam result not found', HTTP_STATUS.OK);
 }));
 
 // CHECK ADMIN STATUS
