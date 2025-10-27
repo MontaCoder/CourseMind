@@ -9,9 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/hooks/use-toast";
 import { PenLine, Save, ShieldCheck, CreditCard, Loader } from "lucide-react";
-import { MonthCost, MonthType, serverURL, YearCost } from '@/constants';
-import axios from 'axios';
-import { getToken } from '@/lib/apiClient';
+import { MonthCost, MonthType, YearCost, websiteURL } from '@/constants';
+import { api } from '@/lib/apiClient';
 import { DownloadIcon, TrashIcon } from '@radix-ui/react-icons';
 import {
   Dialog,
@@ -76,12 +75,8 @@ const Profile = () => {
   async function startDeletion() {
     setProcessingDelete(true);
     const uid = sessionStorage.getItem('uid');
-    const postURL = serverURL + '/api/deleteuser';
-    const token = getToken();
     try {
-      const response = await axios.post(postURL, { userId: uid }, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
+      const response = await api.auth.deleteUser({ userId: uid ?? '' });
       if (response.data.success) {
         toast({
           title: "Profile Deleted",
@@ -127,11 +122,12 @@ const Profile = () => {
     }
     setProcessing(true);
     const uid = sessionStorage.getItem('uid');
-    const postURL = serverURL + '/api/profile';
-    const token = getToken();
     try {
-      const response = await axios.post(postURL, { email: formData.email, mName: formData.name, password: formData.password, uid }, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      const response = await api.auth.updateProfile({
+        email: formData.email,
+        mName: formData.name,
+        password: formData.password,
+        uid: uid ?? ''
       });
       if (response.data.success) {
         toast({
@@ -164,20 +160,17 @@ const Profile = () => {
   async function getDetails() {
     if (sessionStorage.getItem('type') !== 'free') {
       const dataToSend = {
-        uid: sessionStorage.getItem('uid'),
-        email: sessionStorage.getItem('email'),
+        uid: sessionStorage.getItem('uid') ?? '',
+        email: sessionStorage.getItem('email') ?? ''
       };
-      const token = getToken();
       try {
-        const postURL = serverURL + '/api/subscriptiondetail';
-        await axios.post(postURL, dataToSend, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        }).then(res => {
-          setMethod(res.data.method);
-          setJsonData(res.data.session);
+        const { data } = await api.payments.subscriptionDetail(dataToSend);
+        if (data.success) {
+          setMethod(data.method);
+          setJsonData(data.session);
           setPlan(sessionStorage.getItem('type'));
           setCost(sessionStorage.getItem('plan') === 'Monthly Plan' ? '' + MonthCost : '' + YearCost);
-        });
+        }
       } catch (error) {
         console.error(error);
         toast({
@@ -192,69 +185,37 @@ const Profile = () => {
     setProcessingCancel(true);
     const dataToSend = {
       id: jsonData.id,
-      email: sessionStorage.getItem('email')
+      email: sessionStorage.getItem('email') ?? ''
     };
-    const token = getToken();
+
+    const handleCancelSuccess = () => {
+      setProcessingCancel(false);
+      toast({
+        title: "Subscription Cancelled",
+        description: "Your subscription has been cancelled.",
+      });
+      sessionStorage.setItem('type', 'free');
+      window.location.href = websiteURL + '/dashboard/profile';
+    };
+
     try {
       if (method === 'stripe') {
-        const postURL = serverURL + '/api/stripecancel';
-        await axios.post(postURL, dataToSend, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        }).then(res => {
-          setProcessingCancel(false);
-          toast({
-            title: "Subscription Cancelled",
-            description: "Your subscription has been cancelled.",
-          });
-          sessionStorage.setItem('type', 'free');
-          window.location.href = websiteURL + '/dashboard/profile';
-        });
+        await api.payments.stripeCancel(dataToSend);
+        handleCancelSuccess();
       } else if (method === 'paypal') {
-        const postURL = serverURL + '/api/paypalcancel';
-        await axios.post(postURL, dataToSend, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        }).then(res => {
-          setProcessingCancel(false);
-          toast({
-            title: "Subscription Cancelled",
-            description: "Your subscription has been cancelled.",
-          });
-          sessionStorage.setItem('type', 'free');
-          window.location.href = websiteURL + '/dashboard/profile';
-        });
+        await api.payments.paypalCancel(dataToSend);
+        handleCancelSuccess();
       } else if (method === 'paystack') {
         const dataToSends = {
           code: jsonData.subscription_code,
           token: jsonData.email_token,
-          email: sessionStorage.getItem('email')
+          email: sessionStorage.getItem('email') ?? ''
         };
-        const postURL = serverURL + '/api/paystackcancel';
-        await axios.post(postURL, dataToSends, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        }).then(res => {
-          setProcessingCancel(false);
-          toast({
-            title: "Subscription Cancelled",
-            description: "Your subscription has been cancelled.",
-          });
-          sessionStorage.setItem('type', 'free');
-          window.location.href = websiteURL + '/dashboard/profile';
-        });
-
-      }
-      else {
-        const postURL = serverURL + '/api/razorpaycancel';
-        await axios.post(postURL, dataToSend, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        }).then(res => {
-          setProcessingCancel(false);
-          toast({
-            title: "Subscription Cancelled",
-            description: "Your subscription has been cancelled.",
-          });
-          sessionStorage.setItem('type', 'free');
-          window.location.href = websiteURL + '/dashboard/profile';
-        });
+        await api.payments.paystackCancel(dataToSends);
+        handleCancelSuccess();
+      } else {
+        await api.payments.razorpayCancel(dataToSend);
+        handleCancelSuccess();
       }
     } catch (error) {
       setProcessingCancel(false);
