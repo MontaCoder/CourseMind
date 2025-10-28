@@ -6,9 +6,7 @@ import { Save } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { MinimalTiptapEditor } from '../../minimal-tiptap'
 import { Content } from '@tiptap/react'
-import { serverURL } from '@/constants';
-import axios from 'axios';
-import { getToken } from '@/lib/apiClient';
+import { api } from '@/lib/apiClient';
 import { toast } from '@/hooks/use-toast';
 
 const AdminTerms = () => {
@@ -17,24 +15,30 @@ const AdminTerms = () => {
 
   async function saveTerms() {
     setIsLoading(true);
-    const postURL = serverURL + '/api/saveadmin';
-    const token = getToken();
-    const response = await axios.post(postURL, { data: value, type: 'terms' }, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {}
-    });
-    if (response.data.success) {
-      sessionStorage.setItem('terms', '' + value);
-      setIsLoading(false);
-      toast({
-        title: "Saved",
-        description: "Terms of Service saved successfully",
-      });
-    } else {
-      setIsLoading(false);
+    const serializedValue = typeof value === 'string' ? value : JSON.stringify(value ?? '');
+
+    try {
+      const response = await api.admin.saveSettings({ data: serializedValue, type: 'terms' });
+      if (response.data.success) {
+        sessionStorage.setItem('terms', serializedValue);
+        toast({
+          title: "Saved",
+          description: "Terms of Service saved successfully",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: response.data.message ?? "Internal Server Error",
+        });
+      }
+    } catch (error) {
+      console.error('Failed to save terms', error);
       toast({
         title: "Error",
         description: "Internal Server Error",
       });
+    } finally {
+      setIsLoading(false);
     }
   }
   
