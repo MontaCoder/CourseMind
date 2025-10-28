@@ -7,9 +7,7 @@ import { Input } from '@/components/ui/input';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { serverURL } from '@/constants';
-import axios from 'axios';
-import { getToken } from '@/lib/apiClient';
+import { api } from '@/lib/apiClient';
 import { Skeleton } from '@/components/ui/skeleton';
 
 // Sample contacts data
@@ -42,12 +40,9 @@ const AdminContacts = () => {
 
   useEffect(() => {
     async function dashboardData() {
-      const postURL = serverURL + `/api/getcontact`;
-      const token = getToken();
-      const response = await axios.get(postURL, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      setData(response.data)
+      const response = await api.admin.getContacts();
+      const contactsData = response.data.data ?? response.data;
+      setData(Array.isArray(contactsData) ? contactsData : [])
       setIsLoading(false);
     }
     dashboardData();
