@@ -92,12 +92,16 @@ const BlogPost = () => {
                                 </div>
                             </div>
 
-                            <div className="mb-8 rounded-lg overflow-hidden">
-                                <img
-                                    src={imageUrl}
-                                    alt={title}
-                                    className="w-full h-auto object-cover max-h-96"
-                                />
+                            <div className="mb-10">
+                                <div className="relative w-full overflow-hidden rounded-2xl bg-muted shadow-sm">
+                                    <div className="aspect-[16/9]">
+                                        <img
+                                            src={imageUrl}
+                                            alt={title}
+                                            className="absolute inset-0 h-full w-full object-cover object-center"
+                                        />
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="blog-content">
