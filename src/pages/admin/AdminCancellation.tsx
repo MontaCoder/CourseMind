@@ -4,9 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Save } from 'lucide-react';
 import { MinimalTiptapEditor } from '../../minimal-tiptap'
-import { serverURL } from '@/constants';
-import axios from 'axios';
-import { getToken } from '@/lib/apiClient';
+import { api } from '@/lib/apiClient';
 import { toast } from '@/hooks/use-toast';
 import { Content } from '@tiptap/react'
 
@@ -16,24 +14,30 @@ const AdminCancellation = () => {
 
   async function saveCancellation() {
     setIsLoading(true);
-    const postURL = serverURL + '/api/saveadmin';
-    const token = getToken();
-    const response = await axios.post(postURL, { data: value, type: 'cancel' }, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {}
-    });
-    if (response.data.success) {
-      sessionStorage.setItem('cancel', '' + value);
-      setIsLoading(false);
-      toast({
-        title: "Saved",
-        description: "Cancellation policy saved successfully",
-      });
-    } else {
-      setIsLoading(false);
+    const serializedValue = typeof value === 'string' ? value : JSON.stringify(value ?? '');
+
+    try {
+      const response = await api.admin.saveSettings({ data: serializedValue, type: 'cancel' });
+      if (response.data.success) {
+        sessionStorage.setItem('cancel', serializedValue);
+        toast({
+          title: "Saved",
+          description: "Cancellation policy saved successfully",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: response.data.message ?? "Internal Server Error",
+        });
+      }
+    } catch (error) {
+      console.error('Failed to save cancellation policy', error);
       toast({
         title: "Error",
         description: "Internal Server Error",
       });
+    } finally {
+      setIsLoading(false);
     }
   }
 
