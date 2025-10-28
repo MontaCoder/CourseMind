@@ -6,8 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { ArrowLeft, Search, Calendar, User, Tag, ArrowRight, Clock } from 'lucide-react';
 import SEO from '@/components/SEO';
-import { appName, serverURL } from '@/constants';
-import axios from 'axios';
+import { appName } from '@/constants';
+import { api } from '@/lib/apiClient';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface BlogPost {
@@ -40,31 +40,45 @@ const Blog = () => {
 
   useEffect(() => {
     async function dashboardData() {
-      const postURL = serverURL + `/api/getblogs`;
-      const response = await axios.get(postURL);
-      // Process images immediately
-      const processedData = response.data.map((post: BlogPost) => ({
-        ...post,
-        imageUrl: getImage(post.image)
-      }));
+      try {
+        const response = await api.admin.getBlogs();
+        const payload = response?.data?.data ?? response?.data ?? [];
+        const rawBlogs: BlogPost[] = Array.isArray(payload) ? payload : [];
 
-      setData(processedData);
-      setIsLoading(false);
+        // Process images immediately
+        const processedData = rawBlogs.map((post: BlogPost) => ({
+          ...post,
+          imageUrl: getImage(post.image)
+        }));
 
-      // Find featured blog
-      const featuredBlog = processedData.find((post) => post.featured);
-      if (featuredBlog) {
-        setFeatured(featuredBlog);
-      } else {
-        setFeatured(processedData[0]); // Set latest blog as featured if none are featured
-      }
+        setData(processedData);
 
-      // Find all popular blogs
-      const popularBlogs = processedData.filter((post) => post.popular);
-      if (popularBlogs.length > 0) {
-        setPopular(popularBlogs);
-      } else {
-        setPopular([processedData[0]]); // Set latest blog as popular if none are popular
+        // Find featured blog
+        const featuredBlog = processedData.find((post) => post.featured);
+        if (featuredBlog) {
+          setFeatured(featuredBlog);
+        } else if (processedData.length > 0) {
+          setFeatured(processedData[0]); // Set latest blog as featured if none are featured
+        } else {
+          setFeatured(null);
+        }
+
+        // Find all popular blogs
+        const popularBlogs = processedData.filter((post) => post.popular);
+        if (popularBlogs.length > 0) {
+          setPopular(popularBlogs);
+        } else if (processedData.length > 0) {
+          setPopular([processedData[0]]); // Set latest blog as popular if none are popular
+        } else {
+          setPopular([]);
+        }
+      } catch (error) {
+        console.error('Failed to load blog posts', error);
+        setData([]);
+        setFeatured(null);
+        setPopular([]);
+      } finally {
+        setIsLoading(false);
       }
 
     }
@@ -141,64 +155,55 @@ const Blog = () => {
           {/* Featured Post */}
           <div className="mb-16">
             {isLoading ?
-              <Card className="overflow-hidden bg-card">
-                <div className="md:grid md:grid-cols-2">
-                  <div className="bg-muted aspect-video md:aspect-auto">
-                    <Skeleton className="h-full w-full" />
+              <Card className="overflow-hidden bg-card rounded-2xl shadow-sm">
+                <div className="grid gap-0 lg:grid-cols-[1.15fr,1fr]">
+                  <div className="relative aspect-[16/9] bg-muted">
+                    <Skeleton className="absolute inset-0 h-full w-full" />
                   </div>
-                  <div className="flex flex-wrap items-center text-sm text-muted-foreground gap-3 mb-6">
-                    <div className="flex items-center">
-                      <div className="p-6 md:p-8 flex flex-col">
-                        <div className="mb-2">
-                          <Skeleton className="h-6 w-20" />
-                        </div>
-                        <Skeleton className="h-8 w-4/5 mb-3" />
-                        <Skeleton className="h-4 w-full mb-2" />
-                        <Skeleton className="h-4 w-5/6 mb-2" />
-                        <Skeleton className="h-4 w-4/6 mb-6" />
-                        <div className="flex flex-wrap items-center gap-3 mb-6">
-                          <Skeleton className="h-4 w-24" />
-                          <Skeleton className="h-4 w-32" />
-                          <Skeleton className="h-4 w-20" />
-                        </div>
-                        <div className="flex items-center">
-                          <Skeleton className="h-10 w-32 self-start" />
-                        </div>
-                      </div>
+                  <div className="p-6 md:p-8 flex flex-col justify-between">
+                    <div className="space-y-4">
+                      <Skeleton className="h-6 w-20" />
+                      <Skeleton className="h-8 w-4/5" />
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-5/6" />
+                      <Skeleton className="h-4 w-3/5" />
+                    </div>
+                    <div className="mt-8">
+                      <Skeleton className="h-10 w-36" />
                     </div>
                   </div>
                 </div>
               </Card>
               :
-              <Card className="overflow-hidden bg-card">
-                <div className="md:grid md:grid-cols-2">
-                  <div className="bg-muted aspect-video md:aspect-auto flex items-center justify-center">
+              <Card className="overflow-hidden bg-card rounded-2xl shadow-sm">
+                <div className="grid gap-0 lg:grid-cols-[1.15fr,1fr]">
+                  <div className="relative aspect-[16/9] overflow-hidden bg-muted">
                     <img
                       src={featured.imageUrl}
                       alt="Featured post"
-                      className="h-full w-full object-cover"
+                      className="absolute inset-0 h-full w-full object-cover object-center"
                     />
                   </div>
-                  <div className="p-6 md:p-8 flex flex-col">
-                    <div className="mb-2">
+                  <div className="p-6 md:p-8 flex flex-col justify-between space-y-6">
+                    <div className="space-y-4">
                       <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
                         Featured
                       </span>
+                      <h2 className="text-2xl md:text-3xl font-bold leading-tight">{featured.title}</h2>
+                      <p className="text-muted-foreground leading-relaxed line-clamp-4">
+                        {featured.excerpt}
+                      </p>
                     </div>
-                    <h2 className="text-2xl md:text-3xl font-bold mb-3">{featured.title}</h2>
-                    <p className="text-muted-foreground mb-4 flex-grow">
-                      {featured.excerpt}
-                    </p>
-                    <div className="flex flex-wrap items-center text-sm text-muted-foreground gap-3 mb-6">
-                      <div className="flex items-center">
+                    <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
+                      <div className="flex items-center text-sm text-muted-foreground">
                         <Calendar className="h-4 w-4 mr-1" />
                         {formatDate(featured.date)}
                       </div>
+                      <Button onClick={() => readMore(featured._id, featured.category, featured.date, featured.excerpt, featured.imageUrl, featured.title, featured.tags, featured.content)}>
+                        Read Article
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
                     </div>
-                    <Button onClick={() => readMore(featured._id, featured.category, featured.date, featured.excerpt, featured.imageUrl, featured.title, featured.tags, featured.content)} className="self-start">
-                      Read Article
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
                   </div>
                 </div>
               </Card>
@@ -237,34 +242,32 @@ const Blog = () => {
                   :
                   (
                     data.map((post) => (
-                      <Card key={post._id} className="flex flex-col h-full">
-                        <div className="relative aspect-video bg-muted">
+                      <Card key={post._id} className="flex flex-col h-full border-border/60 rounded-2xl overflow-hidden shadow-sm">
+                        <div className="relative aspect-[16/9] bg-muted overflow-hidden">
                           <img
                             src={post.imageUrl}
                             alt={post.title}
-                            className="h-full w-full object-cover"
+                            className="absolute inset-0 h-full w-full object-cover object-center"
                             onError={(e) => {
                               (e.target as HTMLImageElement).src = '/placeholder.svg';
                             }}
                           />
-                          <div className="absolute top-2 left-2">
-                            <span className="inline-flex items-center rounded-full bg-card/90 backdrop-blur-sm px-2.5 py-1 text-xs font-medium">
+                          <div className="absolute top-3 left-3">
+                            <span className="inline-flex items-center rounded-full bg-background/80 backdrop-blur px-2.5 py-1 text-xs font-medium">
                               {post.category}
                             </span>
                           </div>
                         </div>
-                        <CardContent className="flex-grow pt-6">
-                          <h3 className="text-xl font-bold mb-2">{post.title}</h3>
-                          <p className="text-muted-foreground mb-4">{post.excerpt}</p>
-                          <div className="flex flex-wrap items-center text-sm text-muted-foreground gap-3">
-                            <div className="flex items-center">
-                              <Calendar className="h-3 w-3 mr-1" />
-                              {formatDate(post.date)}
-                            </div>
+                        <CardContent className="flex-grow pt-6 space-y-4">
+                          <h3 className="text-xl font-semibold leading-tight line-clamp-2">{post.title}</h3>
+                          <p className="text-muted-foreground text-sm leading-relaxed line-clamp-3">{post.excerpt}</p>
+                          <div className="flex items-center text-sm text-muted-foreground">
+                            <Calendar className="h-3 w-3 mr-1" />
+                            {formatDate(post.date)}
                           </div>
                         </CardContent>
                         <CardFooter className="pt-0">
-                          <Button onClick={() => readMore(post._id, post.category, post.date, post.excerpt, post.imageUrl, post.title, post.tags, post.content)} variant="ghost" className="p-0 h-auto">
+                          <Button onClick={() => readMore(post._id, post.category, post.date, post.excerpt, post.imageUrl, post.title, post.tags, post.content)} variant="ghost" className="p-0 h-auto font-medium">
                             Read More
                             <ArrowRight className="ml-1 h-3 w-3" />
                           </Button>
