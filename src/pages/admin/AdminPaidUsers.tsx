@@ -6,9 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MonthType, serverURL } from '@/constants';
-import axios from 'axios';
-import { getToken } from '@/lib/apiClient';
+import { MonthType } from '@/constants';
+import { api } from '@/lib/apiClient';
 
 const AdminPaidUsers = () => {
 
@@ -28,12 +27,9 @@ const AdminPaidUsers = () => {
 
   useEffect(() => {
     async function dashboardData() {
-      const postURL = serverURL + `/api/getpaid`;
-      const token = getToken();
-      const response = await axios.get(postURL, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      setData(response.data);
+      const response = await api.admin.getPaidUsers();
+      const paidUsers = response.data.data ?? response.data;
+      setData(Array.isArray(paidUsers) ? paidUsers : []);
       setIsLoading(false);
     }
     dashboardData();
