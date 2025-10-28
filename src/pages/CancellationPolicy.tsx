@@ -4,8 +4,8 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, FileText, AlertCircle, Mail, Shield, BookOpen, CreditCard } from 'lucide-react';
-import { appName, serverURL } from '@/constants';
-import axios from 'axios';
+import { appName } from '@/constants';
+import { api } from '@/lib/apiClient';
 import StyledText from '@/components/styledText';
 
 const CancellationPolicy = () => {
@@ -13,12 +13,19 @@ const CancellationPolicy = () => {
   const [data, setData] = useState('');
 
   useEffect(() => {
-    async function dashboardData() {
-      const postURL = serverURL + `/api/policies`;
-      const response = await axios.get(postURL);
-      setData(response.data[0].cancel)
+    async function fetchPolicies() {
+      try {
+        const response = await api.admin.getPolicies();
+        const payload = response?.data?.data ?? response?.data ?? [];
+        const policies = Array.isArray(payload) ? payload : [];
+        if (policies.length > 0) {
+          setData(policies[0].cancel ?? '');
+        }
+      } catch (error) {
+        console.error('Failed to load policies', error);
+      }
     }
-    dashboardData();
+    fetchPolicies();
   }, []);
 
   return (
