@@ -2,9 +2,7 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { serverURL } from '@/constants';
-import axios from 'axios';
-import { getToken } from '@/lib/apiClient';
+import { api } from '@/lib/apiClient';
 import { toast } from '@/hooks/use-toast';
 import { MinimalTiptapEditor } from '../../minimal-tiptap'
 import { Content } from '@tiptap/react'
@@ -16,24 +14,30 @@ const AdminSubscriptionBilling = () => {
 
   async function saveBilling() {
     setIsLoading(true);
-    const postURL = serverURL + '/api/saveadmin';
-    const token = getToken();
-    const response = await axios.post(postURL, { data: value, type: 'billing' }, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {}
-    });
-    if (response.data.success) {
-      sessionStorage.setItem('billing', '' + value);
-      setIsLoading(false);
-      toast({
-        title: "Saved",
-        description: "Subscription & Billing policy saved successfully",
-      });
-    } else {
-      setIsLoading(false);
+    const serializedValue = typeof value === 'string' ? value : JSON.stringify(value ?? '');
+
+    try {
+      const response = await api.admin.saveSettings({ data: serializedValue, type: 'billing' });
+      if (response.data.success) {
+        sessionStorage.setItem('billing', serializedValue);
+        toast({
+          title: "Saved",
+          description: "Subscription & Billing policy saved successfully",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: response.data.message ?? "Internal Server Error",
+        });
+      }
+    } catch (error) {
+      console.error('Failed to save subscription & billing policy', error);
       toast({
         title: "Error",
         description: "Internal Server Error",
       });
+    } finally {
+      setIsLoading(false);
     }
   }
 
