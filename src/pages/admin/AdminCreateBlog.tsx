@@ -18,9 +18,7 @@ import { FilePlus, Image, Check } from 'lucide-react';
 import SEO from '@/components/SEO';
 import { MinimalTiptapEditor } from '../../minimal-tiptap'
 import { Content } from '@tiptap/react'
-import { serverURL } from '@/constants';
-import axios from 'axios';
-import { getToken } from '@/lib/apiClient';
+import { api } from '@/lib/apiClient';
 
 const AdminCreateBlog = () => {
   const [title, setTitle] = useState('');
@@ -71,12 +69,10 @@ const AdminCreateBlog = () => {
     }
 
     try {
-      const postURL = serverURL + '/api/createblog';
-      const token = getToken();
-      const response = await axios.post(postURL, { title, excerpt, content, image: preview, category, tags }, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      if (response.data.success) {
+      const serializedContent = typeof content === 'string' ? content : JSON.stringify(content);
+      const response = await api.admin.createBlog({ title, excerpt, content: serializedContent, image: preview, category, tags });
+      const payload = response.data;
+      if (payload.success) {
         toast({
           title: "Blog post created",
           description: "Your blog post has been published successfully.",
@@ -93,7 +89,7 @@ const AdminCreateBlog = () => {
         setIsSubmitting(false);
         toast({
           title: "Error",
-          description: "Internal Server Error",
+          description: payload.message ?? "Internal Server Error",
         });
       }
     } catch (error) {
