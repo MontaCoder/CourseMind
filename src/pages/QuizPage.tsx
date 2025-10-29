@@ -12,9 +12,7 @@ import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-import axios from 'axios';
-import { serverURL } from '@/constants';
-import { getToken } from '@/lib/apiClient';
+import { api } from '@/lib/apiClient';
 
 enum QuizState {
     NotStarted,
@@ -57,10 +55,11 @@ const QuizPage = () => {
     async function updateResult(correct) {
         const marks = correct * 10;
         const marksString = "" + marks;
-        const token = getToken();
-        await axios.post(serverURL + '/api/updateresult', { courseId, marksString }, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {}
-        });
+        try {
+            await api.exam.updateResult({ courseId, marksString });
+        } catch (error) {
+            console.error('Failed to update quiz result', error);
+        }
     }
 
 
