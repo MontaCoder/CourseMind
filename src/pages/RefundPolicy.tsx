@@ -3,8 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, FileText } from 'lucide-react';
-import { serverURL } from '@/constants';
-import axios from 'axios';
+import { api } from '@/lib/apiClient';
 import StyledText from '@/components/styledText';
 
 const RefundPolicy = () => {
@@ -12,12 +11,19 @@ const RefundPolicy = () => {
   const [data, setData] = useState('');
 
   useEffect(() => {
-    async function dashboardData() {
-      const postURL = serverURL + `/api/policies`;
-      const response = await axios.get(postURL);
-      setData(response.data[0].refund)
+    async function fetchPolicies() {
+      try {
+        const response = await api.admin.getPolicies();
+        const payload = response?.data?.data ?? response?.data ?? [];
+        const policies = Array.isArray(payload) ? payload : [];
+        if (policies.length > 0) {
+          setData(policies[0].refund ?? '');
+        }
+      } catch (error) {
+        console.error('Failed to load policies', error);
+      }
     }
-    dashboardData();
+    fetchPolicies();
   }, []);
 
   return (
