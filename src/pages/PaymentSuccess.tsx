@@ -7,9 +7,8 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { CheckCircle, Download, ArrowRight, Receipt } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { appLogo, companyName, MonthCost, serverURL, websiteURL, YearCost } from '@/constants';
-import axios from 'axios';
-import { getToken } from '@/lib/apiClient';
+import { appLogo, companyName, MonthCost, websiteURL, YearCost } from '@/constants';
+import { api } from '@/lib/apiClient';
 import generatePDF from 'react-to-pdf';
 
 const PaymentSuccess = () => {
@@ -62,68 +61,40 @@ const PaymentSuccess = () => {
     setEmail(sessionStorage.getItem('email'));
     setMethod(sessionStorage.getItem('method'));
 
-    if (sessionStorage.getItem('method') === 'stripe') {
-      const dataToSend = {
-        subscriberId: sessionStorage.getItem('stripe'),
-        uid: sessionStorage.getItem('uid'),
-        plan: sessionStorage.getItem('plan')
-      };
-      const postURL = serverURL + '/api/stripedetails';
-      const token = getToken();
-      await axios.post(postURL, dataToSend, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      }).then(res => {
-        sessionStorage.setItem('type', sessionStorage.getItem('plan'));
-        sendEmail();
-      });
-    } else if (sessionStorage.getItem('method') === 'paystack') {
-      const dataToSend = {
-        email: sessionStorage.getItem('email'),
-        uid: sessionStorage.getItem('uid'),
-        plan: sessionStorage.getItem('plan')
-      };
-      const postURL = serverURL + '/api/paystackfetch';
-      const token = getToken();
-      await axios.post(postURL, dataToSend, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      }).then(res => {
-        sessionStorage.setItem('type', sessionStorage.getItem('plan'));
-        sendEmail();
-      });
-    } else {
-      const subscriptionId = planId;
-      const dataToSend = {
-        subscriberId: subscriptionId,
-        uid: sessionStorage.getItem('uid'),
-        plan: sessionStorage.getItem('plan')
-      };
-      try {
-        if (sessionStorage.getItem('method') === 'paypal') {
-          const postURL = serverURL + '/api/paypaldetails';
-          const token = getToken();
-          await axios.post(postURL, dataToSend, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {}
-          }).then(res => {
-            sessionStorage.setItem('type', sessionStorage.getItem('plan'));
-            sendEmail();
-          });
-        } else if (sessionStorage.getItem('method') === 'razorpay') {
-          const postURL = serverURL + '/api/razorapydetails';
-          const token = getToken();
-          await axios.post(postURL, dataToSend, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {}
-          }).then(res => {
-            sessionStorage.setItem('type', sessionStorage.getItem('plan'));
-            sendEmail();
-          });
-        }
-      } catch (error) {
-        console.error(error);
-        toast({
-          title: "Error",
-          description: "Internal Server Error",
-        });
+    const planType = sessionStorage.getItem('plan') ?? '';
+    const uid = sessionStorage.getItem('uid') ?? '';
+    const method = sessionStorage.getItem('method');
+    const email = sessionStorage.getItem('email') ?? '';
+
+    try {
+      if (method === 'stripe') {
+        const subscriberId = sessionStorage.getItem('stripe') ?? '';
+        const { data } = await api.payments.stripeDetails({ subscriberId, uid, plan: planType });
+        if (!data.success) throw new Error(data.message ?? 'Failed to verify Stripe payment');
+        sessionStorage.setItem('type', planType);
+        await sendEmail();
+      } else if (method === 'paystack') {
+        const { data } = await api.payments.paystackFetch({ email, uid, plan: planType });
+        if (!data.success) throw new Error(data.message ?? 'Failed to verify Paystack payment');
+        sessionStorage.setItem('type', planType);
+        await sendEmail();
+      } else if (method === 'paypal' || method === 'razorpay') {
+        const subscriberId = planId ?? '';
+        const payload = { subscriberId, uid, plan: planType };
+        const request = method === 'paypal'
+          ? api.payments.paypalDetails(payload)
+          : api.payments.razorpayDetails(payload);
+        const { data } = await request;
+        if (!data.success) throw new Error(data.message ?? 'Failed to verify subscription details');
+        sessionStorage.setItem('type', planType);
+        await sendEmail();
       }
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Error",
+        description: "Internal Server Error",
+      });
     }
 
   }
@@ -183,11 +154,7 @@ const PaymentSuccess = () => {
       const subscription = planId;
       const subscriberId = sessionStorage.getItem('email');
       const method = sessionStorage.getItem('method');
-      const postURL = serverURL + '/api/sendreceipt';
-      const token = getToken();
-      await axios.post(postURL, { html, email, plan, subscriberId, user, method, subscription }, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
+      await api.payments.sendReceipt({ html, email: email ?? '', plan: plan ?? '', subscriberId: subscriberId ?? '', user: user ?? '', method: method ?? '', subscription: subscription ?? '' });
     } catch (error) {
       console.error(error);
     }
