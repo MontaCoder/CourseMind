@@ -4,8 +4,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, Shield } from 'lucide-react';
-import { serverURL } from '@/constants';
-import axios from 'axios';
+import { api } from '@/lib/apiClient';
 import StyledText from '@/components/styledText';
 
 const PrivacyPolicy = () => {
@@ -13,12 +12,19 @@ const PrivacyPolicy = () => {
   const [data, setData] = useState('');
 
   useEffect(() => {
-    async function dashboardData() {
-      const postURL = serverURL + `/api/policies`;
-      const response = await axios.get(postURL);
-      setData(response.data[0].privacy)
+    async function fetchPolicies() {
+      try {
+        const response = await api.admin.getPolicies();
+        const payload = response?.data?.data ?? response?.data ?? [];
+        const policies = Array.isArray(payload) ? payload : [];
+        if (policies.length > 0) {
+          setData(policies[0].privacy ?? '');
+        }
+      } catch (error) {
+        console.error('Failed to load policies', error);
+      }
     }
-    dashboardData();
+    fetchPolicies();
   }, []);
 
   return (
