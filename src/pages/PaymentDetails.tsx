@@ -38,9 +38,8 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from '@/hooks/use-toast';
-import { amountInZarOne, amountInZarTwo, appLogo, appName, companyName, FreeCost, FreeType, MonthCost, MonthType, paypalEnabled, paypalPlanIdOne, paypalPlanIdTwo, paystackEnabled, paystackPlanIdOne, paystackPlanIdTwo, razorpayEnabled, razorpayPlanIdOne, razorpayPlanIdTwo, serverURL, stripeEnabled, stripePlanIdOne, stripePlanIdTwo, YearCost, YearType } from '@/constants';
-import axios from 'axios';
-import { getToken } from '@/lib/apiClient';
+import { amountInZarOne, amountInZarTwo, appLogo, appName, companyName, FreeCost, FreeType, MonthCost, MonthType, paypalEnabled, paypalPlanIdOne, paypalPlanIdTwo, paystackEnabled, paystackPlanIdOne, paystackPlanIdTwo, razorpayEnabled, razorpayPlanIdOne, razorpayPlanIdTwo, stripeEnabled, stripePlanIdOne, stripePlanIdTwo, YearCost, YearType } from '@/constants';
+import { api } from '@/lib/apiClient';
 
 // Form validation schema
 const formSchema = z.object({
@@ -174,17 +173,24 @@ const PaymentDetails = () => {
       email: data.email,
       fullAddress: fullAddress
     };
-    const token = getToken();
     try {
-      const postURL = serverURL + '/api/razorpaycreate';
-      const res = await axios.post(postURL, dataToSend, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
+      const { data } = await api.payments.razorpayCreate(dataToSend);
+      if (!data.success) {
+        throw new Error(data.message ?? 'Failed to create Razorpay subscription');
+      }
+      const session = data.session;
       sessionStorage.setItem('method', 'razorpay');
-      setIsProcessing(false);
       sessionStorage.setItem('plan', plan.name);
-      window.open(res.data.short_url, '_blank');
-      navigate('/payment-pending', { state: { sub: res.data.id, link: res.data.short_url, planName: plan.name, planCost: plan.price } });
+      setIsProcessing(false);
+      window.open(session.short_url, '_blank');
+      navigate('/payment-pending', {
+        state: {
+          sub: session.id,
+          link: session.short_url,
+          planName: plan.name,
+          planCost: plan.price
+        }
+      });
     } catch (error) {
       console.error(error);
       setIsProcessing(false);
@@ -207,17 +213,17 @@ const PaymentDetails = () => {
       amountInZar,
       email: data.email
     };
-    const token = getToken();
     try {
-      const postURL = serverURL + '/api/paystackpayment';
-      const res = await axios.post(postURL, dataToSend, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      sessionStorage.setItem('paystack', res.data.id);
+      const { data } = await api.payments.paystackPayment({ ...dataToSend, planId });
+      if (!data.success) {
+        throw new Error(data.message ?? 'Failed to initiate Paystack payment');
+      }
+      const session = data.session;
+      sessionStorage.setItem('paystack', session.id);
       sessionStorage.setItem('method', 'paystack');
       sessionStorage.setItem('plan', plan.name);
       setIsProcessing(false);
-      window.location.href = res.data.url;
+      window.location.href = session.url;
 
     } catch (error) {
       console.error(error);
@@ -237,17 +243,17 @@ const PaymentDetails = () => {
     const dataToSend = {
       planId: planId
     };
-    const token = getToken();
     try {
-      const postURL = serverURL + '/api/stripepayment';
-      const res = await axios.post(postURL, dataToSend, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      sessionStorage.setItem('stripe', res.data.id);
+      const { data } = await api.payments.stripePayment(dataToSend);
+      if (!data.success) {
+        throw new Error(data.message ?? 'Failed to initiate Stripe payment');
+      }
+      const session = data.session;
+      sessionStorage.setItem('stripe', session.id);
       sessionStorage.setItem('method', 'stripe');
       sessionStorage.setItem('plan', plan.name);
       setIsProcessing(false);
-      window.location.href = res.data.url;
+      window.location.href = session.url;
 
     } catch (error) {
       console.error(error);
@@ -477,24 +483,34 @@ const PaymentDetails = () => {
       brand: companyName,
       admin: data.state
     };
-    const token = getToken();
     try {
-      const postURL = serverURL + '/api/paypal';
-      const res = await axios.post(postURL, dataToSend, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      const { data } = await api.payments.paypal({
+        ...dataToSend,
+        planId,
+        name: data.firstName,
+        lastName: data.lastName,
+        post: data.zipCode,
+        address: data.address,
+        country: codeCountry,
+        brand: companyName,
+        admin: data.state
       });
-      
-      // Check if response has links
-      if (!res.data || !res.data.links || !Array.isArray(res.data.links)) {
-        console.error('PayPal response structure:', res.data);
+
+      if (!data.success) {
+        throw new Error(data.message ?? 'Failed to create PayPal subscription');
+      }
+
+      const session = data.session;
+      if (!session?.links || !Array.isArray(session.links)) {
+        console.error('PayPal response structure:', session);
         throw new Error('Invalid PayPal response: missing links');
       }
-      
+
       sessionStorage.setItem('method', 'paypal');
       sessionStorage.setItem('plan', plan.name);
       setIsProcessing(false);
       
-      const links = res.data.links;
+      const links = session.links;
       const approveLink = links.find(link => link.rel === "approve");
       
       if (!approveLink || !approveLink.href) {
