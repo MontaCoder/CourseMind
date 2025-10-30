@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from '@google/generative-ai';
 import showdown from 'showdown';
 import { config } from '../config/environment.js';
-import { AI_MODEL } from '../config/constants.js';
+import { AI_MODEL, HTTP_STATUS } from '../config/constants.js';
 
 const genAI = new GoogleGenerativeAI(config.api.googleAI);
 
@@ -81,8 +81,28 @@ export class AIService {
         `;
 
         const result = await this.generateContent(prompt);
-        // Remove code block markers
-        return result.slice(7, result.length - 4);
+
+        let cleanedResult = result.trim();
+        const fenceMatch = cleanedResult.match(/```(?:json)?\s*([\s\S]*?)```/i);
+
+        if (fenceMatch) {
+            cleanedResult = fenceMatch[1].trim();
+        }
+
+        let parsedExam;
+
+        try {
+            parsedExam = JSON.parse(cleanedResult);
+        } catch (error) {
+            const parseError = new Error('Failed to parse AI exam output as JSON');
+            parseError.statusCode = HTTP_STATUS.BAD_GATEWAY;
+            throw parseError;
+        }
+
+        return {
+            parsedExam,
+            examString: JSON.stringify(parsedExam)
+        };
     }
 }
 

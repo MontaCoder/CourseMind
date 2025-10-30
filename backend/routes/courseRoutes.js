@@ -142,12 +142,12 @@ router.post('/aiexam', authenticateToken, validateRequired(['courseId', 'mainTop
         return ApiResponse.success(res, { message: existingExam.exam }, '');
     }
 
-    const examContent = await AIService.generateExam(courseId, mainTopic, subtopicsString, lang);
+    const { examString } = await AIService.generateExam(courseId, mainTopic, subtopicsString, lang);
 
-    const newExam = new Exam({ course: courseId, exam: examContent, marks: "0", passed: false });
+    const newExam = new Exam({ course: courseId, exam: examString, marks: "0", passed: false });
     await newExam.save();
 
-    ApiResponse.success(res, { message: examContent }, '');
+    ApiResponse.success(res, { message: examString }, '');
 }));
 
 // UPDATE EXAM RESULT
