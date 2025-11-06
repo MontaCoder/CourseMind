@@ -2,13 +2,14 @@ import jwt from 'jsonwebtoken';
 import { HTTP_STATUS } from '../config/constants.js';
 import { User, Admin } from '../models/index.js';
 
+const getJwtSecret = () => process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+
 // Generate JWT token
 export const generateToken = (userId) => {
-    const secret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-    return jwt.sign({ userId }, secret, { expiresIn: '7d' });
+    return jwt.sign({ userId }, getJwtSecret(), { expiresIn: '7d' });
 };
 
-// Verify JWT token middleware
+// Verify JWT token middleware (attaches full user)
 export const authenticateToken = async (req, res, next) => {
     try {
         const authHeader = req.headers['authorization'];
@@ -106,5 +107,27 @@ export const checkAdminAccess = async (req, res, next) => {
             success: false,
             message: 'Error checking admin access'
         });
+    }
+};
+
+// Lightweight token check (no DB lookup) for performance-critical routes
+export const authenticateTokenLite = (req, res, next) => {
+    try {
+        const authHeader = req.headers['authorization'];
+        const token = authHeader && authHeader.split(' ')[1];
+
+        if (!token) {
+            return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+                success: false,
+                message: 'Access token required',
+            });
+        }
+
+        const decoded = jwt.verify(token, getJwtSecret());
+        req.userId = decoded.userId;
+        return next();
+    } catch (error) {
+        const message = error.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token';
+        return res.status(HTTP_STATUS.UNAUTHORIZED).json({ success: false, message });
     }
 };
