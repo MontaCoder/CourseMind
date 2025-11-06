@@ -46,32 +46,24 @@ function extractJSON(text) {
 }
 
 export class AIService {
+    static model = genAI.getGenerativeModel({ model: AI_MODEL, safetySettings });
+
     static async generateContent(prompt) {
-        const model = genAI.getGenerativeModel({ model: AI_MODEL, safetySettings });
-        const result = await model.generateContent(prompt);
-        const response = result.response;
-        return response.text();
+        const result = await this.model.generateContent(prompt);
+        return result.response.text();
     }
 
     static async *generateContentStream(prompt) {
-        const model = genAI.getGenerativeModel({ model: AI_MODEL, safetySettings });
-        
         try {
-            const result = await model.generateContentStream(prompt);
-            let fullText = '';
-            
+            const result = await this.model.generateContentStream(prompt);
+
             for await (const chunk of result.stream) {
                 const chunkText = chunk.text();
-                if (chunkText) {
-                    fullText += chunkText;
-                    yield chunkText;
-                }
+                if (chunkText) yield chunkText;
             }
         } catch (error) {
-            // Fallback to non-streaming if streaming fails
             console.warn('Streaming failed, falling back to non-streaming:', error.message);
             const text = await this.generateContent(prompt);
-            // Chunk the text for streaming effect
             const chunkSize = 50;
             for (let i = 0; i < text.length; i += chunkSize) {
                 yield text.slice(i, i + chunkSize);
