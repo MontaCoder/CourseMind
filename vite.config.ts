@@ -67,7 +67,6 @@ export default defineConfig(({ mode }) => ({
           'tiptap-vendor': [
             '@tiptap/react',
             '@tiptap/starter-kit',
-            '@tiptap/pm',
             '@tiptap/extension-heading',
             '@tiptap/extension-image',
             '@tiptap/extension-link',
