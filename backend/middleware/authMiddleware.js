@@ -53,6 +53,38 @@ export const authenticateToken = async (req, res, next) => {
     }
 };
 
+// Verify JWT token from query parameter (for SSE endpoints)
+export const authenticateTokenQuery = async (req, res, next) => {
+    try {
+        const token = req.query.token;
+
+        if (!token) {
+            return res.status(HTTP_STATUS.UNAUTHORIZED).write(`event: error\ndata: ${JSON.stringify({ message: 'Access token required' })}\n\n`);
+        }
+
+        const secret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+        const decoded = jwt.verify(token, secret);
+        
+        // Attach user info to request
+        req.userId = decoded.userId;
+        
+        // Optionally fetch and attach full user object
+        const user = await User.findById(decoded.userId).select('-password');
+        if (!user) {
+            return res.status(HTTP_STATUS.UNAUTHORIZED).write(`event: error\ndata: ${JSON.stringify({ message: 'User not found' })}\n\n`);
+        }
+        
+        req.user = user;
+        next();
+    } catch (error) {
+        if (error.name === 'TokenExpiredError') {
+            return res.status(HTTP_STATUS.UNAUTHORIZED).write(`event: error\ndata: ${JSON.stringify({ message: 'Token expired' })}\n\n`);
+        }
+        
+        return res.status(HTTP_STATUS.UNAUTHORIZED).write(`event: error\ndata: ${JSON.stringify({ message: 'Invalid token' })}\n\n`);
+    }
+};
+
 // Check if user is admin
 export const checkAdminAccess = async (req, res, next) => {
     try {

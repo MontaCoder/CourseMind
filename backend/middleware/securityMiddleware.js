@@ -102,5 +102,5 @@ export const validateContentType = (req, res, next) => {
     next();
 };
 
-// Request size validation (already handled by body-parser but good to be explicit)
+// Request size validation
 export const requestSizeLimit = '50mb';
