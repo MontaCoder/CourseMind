@@ -1,7 +1,6 @@
 // IMPORTS
 import express from 'express';
 import mongoose from 'mongoose';
-import bodyParser from 'body-parser';
 import { config } from './config/environment.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 import { 
@@ -29,8 +28,7 @@ app.use(corsMiddleware());
 app.use(mongoSanitizeMiddleware);
 app.use(validateContentType);
 
-// BODY PARSING MIDDLEWARE
-app.use(bodyParser.json({ limit: requestSizeLimit }));
+// BODY PARSING MIDDLEWARE (express.json replaces body-parser)
 app.use(express.json({ limit: requestSizeLimit }));
 app.use(express.urlencoded({ extended: true, limit: requestSizeLimit }));
 
