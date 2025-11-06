@@ -24,6 +24,27 @@ const safetySettings = [
     },
 ];
 
+// Reuse a single Showdown converter instance
+const markdownConverter = new showdown.Converter();
+
+// Helper function to extract JSON from text (handles code fences and plain JSON)
+function extractJSON(text) {
+    // Try to find JSON in code blocks first
+    const codeBlockMatch = text.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
+    if (codeBlockMatch) {
+        return codeBlockMatch[1];
+    }
+    
+    // Try to find JSON object directly
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+        return jsonMatch[0];
+    }
+    
+    // Fallback: return original text
+    return text;
+}
+
 export class AIService {
     static async generateContent(prompt) {
         const model = genAI.getGenerativeModel({ model: AI_MODEL, safetySettings });
@@ -32,10 +53,35 @@ export class AIService {
         return response.text();
     }
 
+    static async *generateContentStream(prompt) {
+        const model = genAI.getGenerativeModel({ model: AI_MODEL, safetySettings });
+        
+        try {
+            const result = await model.generateContentStream(prompt);
+            let fullText = '';
+            
+            for await (const chunk of result.stream) {
+                const chunkText = chunk.text();
+                if (chunkText) {
+                    fullText += chunkText;
+                    yield chunkText;
+                }
+            }
+        } catch (error) {
+            // Fallback to non-streaming if streaming fails
+            console.warn('Streaming failed, falling back to non-streaming:', error.message);
+            const text = await this.generateContent(prompt);
+            // Chunk the text for streaming effect
+            const chunkSize = 50;
+            for (let i = 0; i < text.length; i += chunkSize) {
+                yield text.slice(i, i + chunkSize);
+            }
+        }
+    }
+
     static async generateHTML(prompt) {
         const text = await this.generateContent(prompt);
-        const converter = new showdown.Converter();
-        return converter.makeHtml(text);
+        return markdownConverter.makeHtml(text);
     }
 
     static async generateExam(courseId, mainTopic, subtopicsString, lang) {
@@ -81,8 +127,8 @@ export class AIService {
         `;
 
         const result = await this.generateContent(prompt);
-        // Remove code block markers
-        return result.slice(7, result.length - 4);
+        // Robustly extract JSON from response
+        return extractJSON(result);
     }
 }
 
