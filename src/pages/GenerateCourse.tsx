@@ -14,73 +14,89 @@ import SEO from '@/components/SEO';
 import { useToast } from '@/hooks/use-toast';
 import { api, getToken } from '@/lib/apiClient';
 
+const LANGUAGES = [
+  { code: 'en', name: 'English' },
+  { code: 'ar', name: 'Arabic' },
+  { code: 'bn', name: 'Bengali' },
+  { code: 'bg', name: 'Bulgarian' },
+  { code: 'zh', name: 'Chinese' },
+  { code: 'hr', name: 'Croatian' },
+  { code: 'cs', name: 'Czech' },
+  { code: 'da', name: 'Danish' },
+  { code: 'nl', name: 'Dutch' },
+  { code: 'et', name: 'Estonian' },
+  { code: 'fi', name: 'Finnish' },
+  { code: 'fr', name: 'French' },
+  { code: 'de', name: 'German' },
+  { code: 'el', name: 'Greek' },
+  { code: 'he', name: 'Hebrew' },
+  { code: 'hi', name: 'Hindi' },
+  { code: 'hu', name: 'Hungarian' },
+  { code: 'id', name: 'Indonesian' },
+  { code: 'it', name: 'Italian' },
+  { code: 'ja', name: 'Japanese' },
+  { code: 'ko', name: 'Korean' },
+  { code: 'lv', name: 'Latvian' },
+  { code: 'lt', name: 'Lithuanian' },
+  { code: 'no', name: 'Norwegian' },
+  { code: 'pl', name: 'Polish' },
+  { code: 'pt', name: 'Portuguese' },
+  { code: 'ro', name: 'Romanian' },
+  { code: 'ru', name: 'Russian' },
+  { code: 'sr', name: 'Serbian' },
+  { code: 'sk', name: 'Slovak' },
+  { code: 'sl', name: 'Slovenian' },
+  { code: 'es', name: 'Spanish' },
+  { code: 'sw', name: 'Swahili' },
+  { code: 'sv', name: 'Swedish' },
+  { code: 'th', name: 'Thai' },
+  { code: 'tr', name: 'Turkish' },
+  { code: 'uk', name: 'Ukrainian' },
+  { code: 'vi', name: 'Vietnamese' },
+];
+
 const courseFormSchema = z.object({
-  topic: z.string().min(3, { message: "Topic must be at least 3 characters" }),
+  topic: z.string().min(3, { message: 'Topic must be at least 3 characters' }),
   subtopics: z.array(z.string()),
-  topicsLimit: z.enum(["4", "8"]),
-  courseType: z.enum(["Text & Image Course", "Video & Text Course"]),
-  language: z.string().min(1, { message: "Please select a language" })
+  topicsLimit: z.enum(['4', '8']),
+  courseType: z.enum(['Text & Image Course', 'Video & Text Course']),
+  language: z.string().min(1, { message: 'Please select a language' }),
 });
 
 type CourseFormValues = z.infer<typeof courseFormSchema>;
+
+type GeneratedTopics = Record<string, unknown>;
+
+const MAX_SUBTOPICS = 5;
+
+const buildCoursePrompt = (topic: string, subtopics: string[], topicsLimit: string, language: string) => {
+  const main = topic.toLowerCase();
+  const subs = subtopics.map((s) => s.toLowerCase()).join(', ');
+
+  return `Strictly in ${language}, Generate a list of Strict ${topicsLimit} topics and any number sub topic for each topic for main title ${main}, everything in single line. Those ${topicsLimit} topics should Strictly include these topics :- ${subs}. Strictly Keep theory, youtube, image field empty. Generate in the form of JSON in this format {
+"${main}": [
+{"title": "Topic Title","subtopics": [{"title": "Sub Topic Title","theory": "","youtube": "","image": "","done": false}]}
+]}`;
+};
+
+const parseGeneratedTopics = (raw: string): GeneratedTopics => {
+  const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+  return JSON.parse(cleaned);
+};
 
 const GenerateCourse = () => {
   const [subtopicInput, setSubtopicInput] = useState('');
   const [subtopics, setSubtopics] = useState<string[]>([]);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [generatedTopics, setGeneratedTopics] = useState({});
-  const [paidMember, setPaidMember] = useState(false);
-  const maxSubtopics = 5;
+  const [generatedTopics, setGeneratedTopics] = useState<GeneratedTopics>({});
+  const [isPaidMember, setIsPaidMember] = useState(false);
   const { toast } = useToast();
 
-  const languages = [
-    { "code": "en", "name": "English" },
-    { "code": "ar", "name": "Arabic" },
-    { "code": "bn", "name": "Bengali" },
-    { "code": "bg", "name": "Bulgarian" },
-    { "code": "zh", "name": "Chinese" },
-    { "code": "hr", "name": "Croatian" },
-    { "code": "cs", "name": "Czech" },
-    { "code": "da", "name": "Danish" },
-    { "code": "nl", "name": "Dutch" },
-    { "code": "et", "name": "Estonian" },
-    { "code": "fi", "name": "Finnish" },
-    { "code": "fr", "name": "French" },
-    { "code": "de", "name": "German" },
-    { "code": "el", "name": "Greek" },
-    { "code": "he", "name": "Hebrew" },
-    { "code": "hi", "name": "Hindi" },
-    { "code": "hu", "name": "Hungarian" },
-    { "code": "id", "name": "Indonesian" },
-    { "code": "it", "name": "Italian" },
-    { "code": "ja", "name": "Japanese" },
-    { "code": "ko", "name": "Korean" },
-    { "code": "lv", "name": "Latvian" },
-    { "code": "lt", "name": "Lithuanian" },
-    { "code": "no", "name": "Norwegian" },
-    { "code": "pl", "name": "Polish" },
-    { "code": "pt", "name": "Portuguese" },
-    { "code": "ro", "name": "Romanian" },
-    { "code": "ru", "name": "Russian" },
-    { "code": "sr", "name": "Serbian" },
-    { "code": "sk", "name": "Slovak" },
-    { "code": "sl", "name": "Slovenian" },
-    { "code": "es", "name": "Spanish" },
-    { "code": "sw", "name": "Swahili" },
-    { "code": "sv", "name": "Swedish" },
-    { "code": "th", "name": "Thai" },
-    { "code": "tr", "name": "Turkish" },
-    { "code": "uk", "name": "Ukrainian" },
-    { "code": "vi", "name": "Vietnamese" }
-  ];
+  const languages = LANGUAGES;
 
   useEffect(() => {
-
-    if (sessionStorage.getItem('type') !== 'free') {
-      setPaidMember(true);
-    }
-
+    setIsPaidMember(sessionStorage.getItem('type') !== 'free');
   }, []);
 
   const form = useForm<CourseFormValues>({
@@ -88,170 +104,102 @@ const GenerateCourse = () => {
     defaultValues: {
       topic: '',
       subtopics: [],
-      topicsLimit: "4",
-      courseType: "Text & Image Course",
-      language: "English"
-    }
+      topicsLimit: '4',
+      courseType: 'Text & Image Course',
+      language: 'English',
+    },
   });
 
-  // Derived state from form
-  const selectedValue = form.watch('topicsLimit');
-  const selectedType = form.watch('courseType');
-  const lang = form.watch('language');
-
-  const paidToad = () => {
-    if (!paidMember) {
+  const paidHint = () => {
+    if (!isPaidMember) {
       toast({
-        title: "Go Premium",
-        description: "Access all features with a Premium upgrade."
+        title: 'Go Premium',
+        description: 'Access all features with a Premium upgrade.',
       });
     }
   };
 
+  const syncSubtopics = (next: string[]) => {
+    setSubtopics(next);
+    form.setValue('subtopics', next);
+  };
 
   const addSubtopic = () => {
-    if (subtopics.length < maxSubtopics) {
-      if (subtopicInput.trim() === '') return;
-      setSubtopics([...subtopics, subtopicInput.trim()]);
-      setSubtopicInput('');
-      form.setValue('subtopics', [...subtopics, subtopicInput.trim()]);
-    } else {
+    const value = subtopicInput.trim();
+    if (!value) return;
+
+    if (subtopics.length >= MAX_SUBTOPICS && !isPaidMember) {
       toast({
-        title: "Upgrade to Premium",
-        description: "You are limited to adding only 5 subtopics."
+        title: 'Upgrade to Premium',
+        description: 'You are limited to adding only 5 subtopics.',
       });
+      return;
     }
+
+    syncSubtopics([...subtopics, value]);
+    setSubtopicInput('');
+  };
+
+  const removeSubtopic = (index: number) => {
+    syncSubtopics(subtopics.filter((_, i) => i !== index));
   };
 
   const onSubmit = async (data: CourseFormValues) => {
     setIsLoading(true);
     setIsSubmitted(true);
 
-    const subtopics = [];
-    data.subtopics.forEach(subtopic => {
-      subtopics.push(subtopic);
-    });
-
-    const mainTopic = data.topic;
-    const lang = data.language;
-    const number = data.topicsLimit;
-
-    const prompt = `Strictly in ${lang}, Generate a list of Strict ${number} topics and any number sub topic for each topic for main title ${mainTopic.toLowerCase()}, everything in single line. Those ${number} topics should Strictly include these topics :- ${subtopics.join(', ').toLowerCase()}. Strictly Keep theory, youtube, image field empty. Generate in the form of JSON in this format {
-            "${mainTopic.toLowerCase()}": [
-       {
-       "title": "Topic Title",
-       "subtopics": [
-        {
-        "title": "Sub Topic Title",
-        "theory": "",
-        "youtube": "",
-        "image": "",
-        "done": false
-        },
-        {
-        "title": "Sub Topic Title",
-        "theory": "",
-        "youtube": "",
-        "image": "",
-        "done": false
-        }
-       ]
-       },
-       {
-       "title": "Topic Title",
-       "subtopics": [
-        {
-        "title": "Sub Topic Title",
-        "theory": "",
-        "youtube": "",
-        "image": "",
-        "done": false
-        },
-        {
-        "title": "Sub Topic Title",
-        "theory": "",
-        "youtube": "",
-        "image": "",
-        "done": false
-        }
-       ]
-       }
-      ]
-      }`;
-
-    sendPrompt(prompt);
+    const prompt = buildCoursePrompt(data.topic, data.subtopics, data.topicsLimit, data.language);
+    await sendPrompt(prompt);
   };
 
-  async function sendPrompt(prompt: string) {
+  const sendPrompt = async (prompt: string) => {
     const token = getToken();
     if (!token) {
-      toast({
-        title: "Error",
-        description: "Authentication required",
-      });
+      toast({ title: 'Error', description: 'Authentication required' });
       setIsLoading(false);
+      setIsSubmitted(false);
       return;
     }
 
     let buffer = '';
 
     try {
-      // Use fetch-based streaming
       await api.ai.promptStream(
         prompt,
         token,
         (chunk: string) => {
           buffer += chunk;
         },
-        () => {
-          handleComplete(buffer);
-        },
-        (error: Error) => {
-          console.error('Streaming error:', error);
-          // Fallback to non-streaming
-          fallbackToNonStreaming(prompt);
-        }
+        () => handleComplete(buffer),
+        () => fallbackToNonStreaming(prompt),
       );
-    } catch (error) {
-      console.error('SSE setup error:', error);
-      // Fallback to non-streaming
-      fallbackToNonStreaming(prompt);
+    } catch {
+      await fallbackToNonStreaming(prompt);
     }
-  }
+  };
 
-  function handleComplete(text: string) {
+  const handleComplete = (text: string) => {
     try {
-      // Extract JSON from text (handles code fences)
-      const cleanedJsonString = text.replace(/```json/g, '').replace(/```/g, '').trim();
-      const parsedJson = JSON.parse(cleanedJsonString);
-      setGeneratedTopics(parsedJson);
+      const parsed = parseGeneratedTopics(text);
+      setGeneratedTopics(parsed);
       setIsLoading(false);
-    } catch (error) {
-      console.error('JSON parse error:', error);
+    } catch {
       setIsLoading(false);
-      toast({
-        title: "Error",
-        description: "Failed to parse generated content",
-      });
+      toast({ title: 'Error', description: 'Failed to parse generated content' });
     }
-  }
+  };
 
-  async function fallbackToNonStreaming(prompt: string) {
+  const fallbackToNonStreaming = async (prompt: string) => {
     try {
       const res = await api.ai.prompt({ prompt });
-      if (!res.data.success) {
-        throw new Error(res.data.message ?? 'Failed to generate content');
-      }
+      if (!res.data?.success) throw new Error(res.data?.message ?? 'Failed to generate content');
       handleComplete(res.data.content);
-    } catch (error) {
-      console.error(error);
+    } catch {
       setIsLoading(false);
-      toast({
-        title: "Error",
-        description: "Internal Server Error",
-      });
+      setIsSubmitted(false);
+      toast({ title: 'Error', description: 'Internal Server Error' });
     }
-  }
+  };
 
   const handleEditTopics = () => {
     setIsSubmitted(false);
@@ -342,15 +290,11 @@ const GenerateCourse = () => {
                           <div key={index} className="flex items-center gap-2 p-2 bg-muted rounded-md">
                             <span className="text-sm">{topic}</span>
                             <Button
-                            type="button"
+                              type="button"
                               variant="ghost"
                               size="sm"
                               className="ml-auto h-7 w-7 p-0"
-                              onClick={() => {
-                                const newSubtopics = subtopics.filter((_, i) => i !== index);
-                                setSubtopics(newSubtopics);
-                                form.setValue('subtopics', newSubtopics);
-                              }}
+                              onClick={() => removeSubtopic(index)}
                             >
                               ×
                             </Button>
@@ -379,8 +323,8 @@ const GenerateCourse = () => {
                                 <RadioGroupItem defaultChecked value="4" id="r1" />
                                 <FormLabel htmlFor="r1" className="mb-0">5</FormLabel>
                               </div>
-                              <div onClick={paidToad} className="flex items-center space-x-2 border p-3 rounded-md">
-                                <RadioGroupItem disabled={!paidMember} value="8" id="r2" />
+                              <div onClick={paidHint} className="flex items-center space-x-2 border p-3 rounded-md">
+                                <RadioGroupItem disabled={!isPaidMember} value="8" id="r2" />
                                 <FormLabel htmlFor="r2" className="mb-0">10</FormLabel>
                               </div>
                             </RadioGroup>
@@ -409,8 +353,8 @@ const GenerateCourse = () => {
                                 <RadioGroupItem defaultChecked value="Text & Image Course" id="ct1" />
                                 <FormLabel htmlFor="ct1" className="mb-0">Theory & Image Course</FormLabel>
                               </div>
-                              <div onClick={paidToad} className="flex items-center space-x-2 border p-3 rounded-md">
-                                <RadioGroupItem disabled={!paidMember} value="Video & Text Course" id="ct2" />
+                              <div onClick={paidHint} className="flex items-center space-x-2 border p-3 rounded-md">
+                                <RadioGroupItem disabled={!isPaidMember} value="Video & Text Course" id="ct2" />
                                 <FormLabel htmlFor="ct2" className="mb-0">Video & Theory Course</FormLabel>
                               </div>
                             </RadioGroup>
@@ -427,8 +371,8 @@ const GenerateCourse = () => {
                       <FormItem>
                         <FormLabel>Course Language</FormLabel>
                         <Select onValueChange={(value) => {
-                          if (!paidMember) {
-                            paidToad();
+                          if (!isPaidMember) {
+                            paidHint();
                           } else {
                             field.onChange(value);
                           }
