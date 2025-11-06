@@ -9,7 +9,7 @@ import {
   AccordionTrigger
 } from '@/components/ui/accordion';
 import { Content } from '@tiptap/react'
-import { MinimalTiptapEditor } from '../minimal-tiptap'
+import { MinimalTiptapEditor } from '@/minimal-tiptap'
 import YouTube from 'react-youtube';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, Home, Share, Download, MessageCircle, ClipboardCheck, Menu, Award } from 'lucide-react';

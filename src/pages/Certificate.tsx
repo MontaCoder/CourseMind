@@ -6,8 +6,8 @@ import { Award, Download, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import SEO from '@/components/SEO';
-import certificate from '../res/certificate.png';
-import logo from '../res/logo.svg';
+import certificate from '@/res/certificate.png';
+import logo from '@/res/logo.svg';
 import { toPng } from 'html-to-image';
 import { appName } from '@/constants';
 

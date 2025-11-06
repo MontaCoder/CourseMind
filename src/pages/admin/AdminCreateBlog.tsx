@@ -16,7 +16,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { FilePlus, Image, Check } from 'lucide-react';
 import SEO from '@/components/SEO';
-import { MinimalTiptapEditor } from '../../minimal-tiptap'
+import { MinimalTiptapEditor } from '@/minimal-tiptap'
 import { Content } from '@tiptap/react'
 import { api } from '@/lib/apiClient';
 

@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowRight, Mail, Lock, AlertTriangle } from 'lucide-react';
 import { appName, facebookClientId } from '@/constants';
-import Logo from '../res/logo.svg';
+import Logo from '@/res/logo.svg';
 import { api, setToken } from '@/lib/apiClient';
 import { GoogleLogin } from '@react-oauth/google';
 import { jwtDecode, type JwtPayload } from "jwt-decode";

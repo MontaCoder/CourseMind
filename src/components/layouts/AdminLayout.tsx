@@ -33,7 +33,7 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import Logo from '../../res/logo.svg';
+import Logo from '@/res/logo.svg';
 import { api } from '@/lib/apiClient';
 
 const AdminLayout = () => {

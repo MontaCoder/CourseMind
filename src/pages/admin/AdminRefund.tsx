@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Save } from 'lucide-react';
 import { api } from '@/lib/apiClient';
 import { toast } from '@/hooks/use-toast';
-import { MinimalTiptapEditor } from '../../minimal-tiptap'
+import { MinimalTiptapEditor } from '@/minimal-tiptap'
 import { Content } from '@tiptap/react'
 
 const AdminRefund = () => {

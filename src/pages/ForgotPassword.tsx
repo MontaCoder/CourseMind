@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Mail, AlertTriangle, ArrowRight } from 'lucide-react';
 import { appLogo, appName, companyName, serverURL } from '@/constants';
-import Logo from '../res/logo.svg';
+import Logo from '@/res/logo.svg';
 import apiClient, { api } from '@/lib/apiClient';
 
 const ForgotPassword = () => {

@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Key, AlertTriangle, ArrowRight, Check, Eye, EyeOff } from 'lucide-react';
 import { appLogo, appName, companyName, websiteURL } from '@/constants';
-import Logo from '../res/logo.svg';
+import Logo from '@/res/logo.svg';
 import apiClient, { api } from '@/lib/apiClient';
 
 const ResetPassword = () => {

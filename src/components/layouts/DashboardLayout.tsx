@@ -22,7 +22,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { appName, websiteURL } from '@/constants';
-import Logo from '../../res/logo.svg';
+import Logo from '@/res/logo.svg';
 import { DownloadIcon } from '@radix-ui/react-icons';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/apiClient';
