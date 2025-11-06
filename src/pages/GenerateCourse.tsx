@@ -12,7 +12,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import CoursePreview from '@/components/CoursePreview';
 import SEO from '@/components/SEO';
 import { useToast } from '@/hooks/use-toast';
-import { api } from '@/lib/apiClient';
+import { api, getToken } from '@/lib/apiClient';
 
 const courseFormSchema = z.object({
   topic: z.string().min(3, { message: "Topic must be at least 3 characters" }),
@@ -30,11 +30,8 @@ const GenerateCourse = () => {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [generatedTopics, setGeneratedTopics] = useState({});
-  const maxSubtopics = 5;
-  const [selectedValue, setSelectedValue] = useState('4');
-  const [selectedType, setSelectedType] = useState('Text & Image Course');
   const [paidMember, setPaidMember] = useState(false);
-  const [lang, setLang] = useState('English');
+  const maxSubtopics = 5;
   const { toast } = useToast();
 
   const languages = [
@@ -96,6 +93,11 @@ const GenerateCourse = () => {
       language: "English"
     }
   });
+
+  // Derived state from form
+  const selectedValue = form.watch('topicsLimit');
+  const selectedType = form.watch('courseType');
+  const lang = form.watch('language');
 
   const paidToad = () => {
     if (!paidMember) {
@@ -181,30 +183,66 @@ const GenerateCourse = () => {
   };
 
   async function sendPrompt(prompt: string) {
-    const dataToSend = {
-      prompt: prompt,
-    };
+    const token = getToken();
+    if (!token) {
+      toast({
+        title: "Error",
+        description: "Authentication required",
+      });
+      setIsLoading(false);
+      return;
+    }
+
+    let buffer = '';
+
     try {
-      const res = await api.ai.prompt(dataToSend);
+      // Use fetch-based streaming
+      await api.ai.promptStream(
+        prompt,
+        token,
+        (chunk: string) => {
+          buffer += chunk;
+        },
+        () => {
+          handleComplete(buffer);
+        },
+        (error: Error) => {
+          console.error('Streaming error:', error);
+          // Fallback to non-streaming
+          fallbackToNonStreaming(prompt);
+        }
+      );
+    } catch (error) {
+      console.error('SSE setup error:', error);
+      // Fallback to non-streaming
+      fallbackToNonStreaming(prompt);
+    }
+  }
+
+  function handleComplete(text: string) {
+    try {
+      // Extract JSON from text (handles code fences)
+      const cleanedJsonString = text.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsedJson = JSON.parse(cleanedJsonString);
+      setGeneratedTopics(parsedJson);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('JSON parse error:', error);
+      setIsLoading(false);
+      toast({
+        title: "Error",
+        description: "Failed to parse generated content",
+      });
+    }
+  }
+
+  async function fallbackToNonStreaming(prompt: string) {
+    try {
+      const res = await api.ai.prompt({ prompt });
       if (!res.data.success) {
         throw new Error(res.data.message ?? 'Failed to generate content');
       }
-      const generatedText = res.data.content;
-      const cleanedJsonString = generatedText.replace(/```json/g, '').replace(/```/g, '');
-
-      try {
-        const parsedJson = JSON.parse(cleanedJsonString);
-        setGeneratedTopics(parsedJson)
-        setIsLoading(false);
-      } catch (error) {
-        console.error(error);
-        setIsLoading(false);
-        toast({
-          title: "Error",
-          description: "Internal Server Error",
-        });
-      }
-
+      handleComplete(res.data.content);
     } catch (error) {
       console.error(error);
       setIsLoading(false);
@@ -231,8 +269,8 @@ const GenerateCourse = () => {
           isLoading={isLoading}
           courseName={form.getValues('topic').toLowerCase()}
           topics={generatedTopics}
-          type={selectedType}
-          lang={lang.toLowerCase()}
+          type={form.getValues('courseType')}
+          lang={form.getValues('language').toLowerCase()}
           onClose={handleEditTopics}
         />
       </>
@@ -331,10 +369,9 @@ const GenerateCourse = () => {
                         <FormItem className="mt-2">
                           <FormControl>
                             <RadioGroup
-                              value={selectedValue}
-                              onValueChange={(selectedValue) => {
-                                setSelectedValue(selectedValue);
-                                field.onChange(selectedValue);
+                              value={field.value}
+                              onValueChange={(value) => {
+                                field.onChange(value);
                               }}
                               className="space-y-2"
                             >
@@ -362,10 +399,9 @@ const GenerateCourse = () => {
                         <FormItem className="mt-2">
                           <FormControl>
                             <RadioGroup
-                              value={selectedType}
-                              onValueChange={(selectedValue) => {
-                                setSelectedType(selectedValue);
-                                field.onChange(selectedValue);
+                              value={field.value}
+                              onValueChange={(value) => {
+                                field.onChange(value);
                               }}
                               className="space-y-2"
                             >
@@ -390,14 +426,13 @@ const GenerateCourse = () => {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Course Language</FormLabel>
-                        <Select onValueChange={(selectedValue) => {
+                        <Select onValueChange={(value) => {
                           if (!paidMember) {
                             paidToad();
                           } else {
-                            setLang(selectedValue);
-                            field.onChange(selectedValue);
+                            field.onChange(value);
                           }
-                        }} value={lang}>
+                        }} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select language" />
@@ -414,7 +449,6 @@ const GenerateCourse = () => {
                   />
 
                   <Button
-                    onClick={() => onSubmit}
                     type="submit"
                     className="w-full bg-black text-white hover:bg-gray-800"
                   >

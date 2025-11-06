@@ -210,6 +210,75 @@ export const api = {
         prompt: (data: { prompt: string }) =>
             apiClient.post('/api/prompt', data),
 
+        promptStream: async (prompt: string, token: string, onChunk: (chunk: string) => void, onDone: () => void, onError: (error: Error) => void) => {
+            const url = `${serverURL}/api/prompt-stream`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+                body: JSON.stringify({ prompt }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            if (!reader) {
+                throw new Error('No reader available');
+            }
+
+            while (true) {
+                const { done, value } = await reader.read();
+                
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+                    
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            if (data.delta) {
+                                onChunk(data.delta);
+                            }
+                        } catch (e) {
+                            console.warn('Failed to parse SSE data:', e);
+                        }
+                    } else if (line.startsWith('event: ')) {
+                        const eventType = line.slice(7);
+                        if (eventType === 'done') {
+                            onDone();
+                            return;
+                        } else if (eventType === 'error') {
+                            // Check next line for error data
+                            if (i + 1 < lines.length && lines[i + 1].startsWith('data: ')) {
+                                try {
+                                    const errorData = JSON.parse(lines[i + 1].slice(6));
+                                    onError(new Error(errorData.message || 'Streaming error'));
+                                } catch (e) {
+                                    onError(new Error('Streaming error'));
+                                }
+                            } else {
+                                onError(new Error('Streaming error'));
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+        },
+
         generate: (data: { prompt: string }) =>
             apiClient.post('/api/generate', data),
 
