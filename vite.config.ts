@@ -56,4 +56,33 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    minify: 'esbuild',
+    cssMinify: true,
+    sourcemap: mode === 'development',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'tiptap-vendor': [
+            '@tiptap/react',
+            '@tiptap/starter-kit',
+            '@tiptap/pm',
+            '@tiptap/extension-heading',
+            '@tiptap/extension-image',
+            '@tiptap/extension-link',
+            '@tiptap/extension-placeholder',
+            '@tiptap/extension-text-style',
+            '@tiptap/extension-typography',
+            '@tiptap/extension-underline',
+            '@tiptap/extension-horizontal-rule',
+            '@tiptap/extension-code-block-lowlight',
+            '@tiptap/extension-color',
+          ],
+          'ui-vendor': ['lucide-react', 'recharts'],
+          'form-vendor': ['react-hook-form', '@hookform/resolvers', 'zod'],
+        },
+      },
+    },
+  },
 }));
