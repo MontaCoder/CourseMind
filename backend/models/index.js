@@ -123,3 +123,4 @@ export const Notes = mongoose.model('Notes', notesSchema);
 export const Exam = mongoose.model('Exams', examSchema);
 export const Lang = mongoose.model('Lang', langSchema);
 export const Blog = mongoose.model('Blog', blogSchema);
+export { RefreshToken } from './refreshToken.js';

@@ -19,6 +19,7 @@ import paymentRoutes from './routes/paymentRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import emailRoutes from './routes/emailRoutes.js';
+import tokenRoutes from './routes/tokenRoutes.js';
 
 // INITIALIZE APP
 const app = express();
@@ -50,6 +51,7 @@ app.use('/api', apiLimiter, paymentRoutes);
 app.use('/api', apiLimiter, aiRoutes);
 app.use('/api', apiLimiter, adminRoutes);
 app.use('/api', apiLimiter, emailRoutes);
+app.use('/api', apiLimiter, tokenRoutes);
 
 // HEALTH CHECK
 app.get('/health', (req, res) => {
