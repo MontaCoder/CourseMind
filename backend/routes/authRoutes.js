@@ -9,7 +9,8 @@ import { config } from '../config/environment.js';
 import { USER_TYPES, ADMIN_TYPES, HTTP_STATUS } from '../config/constants.js';
 import { validateRequired, validateEmailField } from '../middleware/validation.js';
 import { validateSchema, authSchemas } from '../middleware/schemaValidation.js';
-import { generateToken, authenticateToken } from '../middleware/authMiddleware.js';
+import { generateAccessToken, generateRefreshToken, authenticateToken } from '../middleware/authMiddleware.js';
+import { TokenService } from '../services/tokenService.js';
 import { authLimiter } from '../middleware/securityMiddleware.js';
 
 const router = express.Router();
@@ -35,14 +36,23 @@ router.post('/signup', authLimiter, validateSchema(authSchemas.signup), validate
         await newAdmin.save();
     }
 
-    // Generate JWT token
-    const token = generateToken(newUser._id);
-    
+    // Generate tokens
+    const accessToken = generateAccessToken(newUser._id);
+    const refreshToken = generateRefreshToken(newUser._id);
+
+    await TokenService.saveRefreshToken({
+        userId: newUser._id,
+        token: refreshToken,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+    });
+
     // Remove password from response
     const userResponse = newUser.toObject();
     delete userResponse.password;
 
-    ApiResponse.success(res, { userId: newUser._id, user: userResponse, token }, 'Account created successfully');
+    ApiResponse.success(res, { userId: newUser._id, user: userResponse, accessToken, refreshToken }, 'Account created successfully');
 }));
 
 // SIGNIN
@@ -62,14 +72,23 @@ router.post('/signin', authLimiter, validateSchema(authSchemas.signin), asyncHan
         return ApiResponse.error(res, 'Invalid email or password', HTTP_STATUS.UNAUTHORIZED);
     }
 
-    // Generate JWT token
-    const token = generateToken(user._id);
-    
+    // Generate tokens
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
+    await TokenService.saveRefreshToken({
+        userId: user._id,
+        token: refreshToken,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+    });
+
     // Remove password from response
     const userResponse = user.toObject();
     delete userResponse.password;
 
-    ApiResponse.success(res, { userData: userResponse, token }, 'SignIn Successful');
+    ApiResponse.success(res, { userData: userResponse, accessToken, refreshToken }, 'SignIn Successful');
 }));
 
 // SOCIAL LOGIN
@@ -93,14 +112,23 @@ router.post('/social', validateRequired(['email', 'name']), asyncHandler(async (
         }
     }
 
-    // Generate JWT token
-    const token = generateToken(user._id);
-    
+    // Generate tokens
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
+    await TokenService.saveRefreshToken({
+        userId: user._id,
+        token: refreshToken,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+    });
+
     // Remove password from response
     const userResponse = user.toObject();
     delete userResponse.password;
 
-    ApiResponse.success(res, { userData: userResponse, token }, user ? 'SignIn Successful' : 'Account created successfully');
+    ApiResponse.success(res, { userData: userResponse, accessToken, refreshToken }, user ? 'SignIn Successful' : 'Account created successfully');
 }));
 
 // FORGOT PASSWORD

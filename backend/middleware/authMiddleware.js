@@ -2,14 +2,31 @@ import jwt from 'jsonwebtoken';
 import { HTTP_STATUS } from '../config/constants.js';
 import { User, Admin } from '../models/index.js';
 
-const getJwtSecret = () => process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-
-// Generate JWT token
-export const generateToken = (userId) => {
-    return jwt.sign({ userId }, getJwtSecret(), { expiresIn: '7d' });
+const getJwtSecret = () => {
+    if (!process.env.JWT_SECRET) {
+        throw new Error('JWT_SECRET is not set');
+    }
+    return process.env.JWT_SECRET;
 };
 
-// Verify JWT token middleware (attaches full user)
+const getRefreshSecret = () => {
+    if (!process.env.JWT_REFRESH_SECRET) {
+        throw new Error('JWT_REFRESH_SECRET is not set');
+    }
+    return process.env.JWT_REFRESH_SECRET;
+};
+
+// Generate short-lived access token
+export const generateAccessToken = (userId) => {
+    return jwt.sign({ userId, type: 'access' }, getJwtSecret(), { expiresIn: '15m' });
+};
+
+// Generate refresh token (longer-lived)
+export const generateRefreshToken = (userId) => {
+    return jwt.sign({ userId, type: 'refresh' }, getRefreshSecret(), { expiresIn: '7d' });
+};
+
+// Verify access token middleware (attaches full user)
 export const authenticateToken = async (req, res, next) => {
     try {
         const authHeader = req.headers['authorization'];
@@ -124,6 +141,9 @@ export const authenticateTokenLite = (req, res, next) => {
         }
 
         const decoded = jwt.verify(token, getJwtSecret());
+        if (decoded.type !== 'access') {
+            return res.status(HTTP_STATUS.UNAUTHORIZED).json({ success: false, message: 'Invalid token type' });
+        }
         req.userId = decoded.userId;
         return next();
     } catch (error) {
