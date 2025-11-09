@@ -22,7 +22,9 @@ import emailRoutes from './routes/emailRoutes.js';
 // INITIALIZE APP
 const app = express();
 
-// SECURITY MIDDLEWARE
+// SECURITY & OBSERVABILITY MIDDLEWARE
+import { requestLogger } from './middleware/requestLogger.js';
+app.use(requestLogger);
 app.use(helmetMiddleware);
 app.use(corsMiddleware());
 app.use(mongoSanitizeMiddleware);
