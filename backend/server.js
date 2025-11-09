@@ -8,7 +8,8 @@ import {
     helmetMiddleware, 
     mongoSanitizeMiddleware, 
     validateContentType,
-    requestSizeLimit 
+    requestSizeLimit,
+    apiLimiter,
 } from './middleware/securityMiddleware.js';
 
 // ROUTE IMPORTS
@@ -42,13 +43,13 @@ mongoose.connect(config.mongoUri).then(() => {
     process.exit(1);
 });
 
-// ROUTES
-app.use('/api', authRoutes);
-app.use('/api', courseRoutes);
-app.use('/api', paymentRoutes);
-app.use('/api', aiRoutes);
-app.use('/api', adminRoutes);
-app.use('/api', emailRoutes);
+// ROUTES (rate-limited & secured)
+app.use('/api', apiLimiter, authRoutes);
+app.use('/api', apiLimiter, courseRoutes);
+app.use('/api', apiLimiter, paymentRoutes);
+app.use('/api', apiLimiter, aiRoutes);
+app.use('/api', apiLimiter, adminRoutes);
+app.use('/api', apiLimiter, emailRoutes);
 
 // HEALTH CHECK
 app.get('/health', (req, res) => {
