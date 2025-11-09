@@ -3,6 +3,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { AIService } from '../services/aiService.js';
 import { MediaService } from '../services/mediaService.js';
 import { validateRequired } from '../middleware/validation.js';
+import { validateSchema, aiSchemas } from '../middleware/schemaValidation.js';
 import { authenticateTokenLite } from '../middleware/authMiddleware.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { HTTP_STATUS } from '../config/constants.js';
@@ -30,12 +31,12 @@ const limitPromptLength = (req, res, next) => {
 };
 
 // GENERATE AI CONTENT (RAW TEXT)
-router.post('/prompt', authenticateTokenLite, validateRequired(['prompt']), limitPromptLength, asyncHandler(async (req, res) => {
+router.post('/prompt', authenticateTokenLite, validateSchema(aiSchemas.prompt), limitPromptLength, asyncHandler(async (req, res) => {
     await handleAIGeneration(req, res, AIService.generateContent.bind(AIService), 'AI content generated successfully');
 }));
 
 // GENERATE AI CONTENT (STREAMING VIA SSE)
-router.post('/prompt-stream', authenticateTokenLite, validateRequired(['prompt']), limitPromptLength, asyncHandler(async (req, res) => {
+router.post('/prompt-stream', authenticateTokenLite, validateSchema(aiSchemas.prompt), limitPromptLength, asyncHandler(async (req, res) => {
     const { prompt } = req.body;
     
     // Set SSE headers
@@ -64,12 +65,12 @@ router.post('/prompt-stream', authenticateTokenLite, validateRequired(['prompt']
 }));
 
 // GENERATE THEORY (HTML)
-router.post('/generate', authenticateTokenLite, validateRequired(['prompt']), limitPromptLength, asyncHandler(async (req, res) => {
+router.post('/generate', authenticateTokenLite, validateSchema(aiSchemas.prompt), limitPromptLength, asyncHandler(async (req, res) => {
     await handleAIGeneration(req, res, AIService.generateHTML.bind(AIService), 'AI HTML generated successfully');
 }));
 
 // CHAT
-router.post('/chat', authenticateTokenLite, validateRequired(['prompt']), limitPromptLength, asyncHandler(async (req, res) => {
+router.post('/chat', authenticateTokenLite, validateSchema(aiSchemas.prompt), limitPromptLength, asyncHandler(async (req, res) => {
     await handleAIGeneration(req, res, AIService.generateHTML.bind(AIService), 'AI chat response generated');
 }));
 

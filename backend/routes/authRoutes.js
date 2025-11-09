@@ -8,13 +8,14 @@ import { emailTemplates } from '../utils/emailTemplates.js';
 import { config } from '../config/environment.js';
 import { USER_TYPES, ADMIN_TYPES, HTTP_STATUS } from '../config/constants.js';
 import { validateRequired, validateEmailField } from '../middleware/validation.js';
+import { validateSchema, authSchemas } from '../middleware/schemaValidation.js';
 import { generateToken, authenticateToken } from '../middleware/authMiddleware.js';
 import { authLimiter } from '../middleware/securityMiddleware.js';
 
 const router = express.Router();
 
 // SIGNUP
-router.post('/signup', authLimiter, validateRequired(['email', 'mName', 'password', 'type']), validateEmailField, asyncHandler(async (req, res) => {
+router.post('/signup', authLimiter, validateSchema(authSchemas.signup), validateEmailField, asyncHandler(async (req, res) => {
     const { email, mName, password, type } = req.body;
 
     const estimate = await User.estimatedDocumentCount();
@@ -45,7 +46,7 @@ router.post('/signup', authLimiter, validateRequired(['email', 'mName', 'passwor
 }));
 
 // SIGNIN
-router.post('/signin', authLimiter, validateRequired(['email', 'password']), asyncHandler(async (req, res) => {
+router.post('/signin', authLimiter, validateSchema(authSchemas.signin), asyncHandler(async (req, res) => {
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
