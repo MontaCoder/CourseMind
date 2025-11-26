@@ -21,11 +21,11 @@ import { Home, User, DollarSign, LogOut, Sparkles, Menu, Settings2Icon } from 'l
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { appName, serverURL, websiteURL } from '@/constants';
+import { appName, websiteURL } from '@/constants';
 import Logo from '../../res/logo.svg';
 import { DownloadIcon } from '@radix-ui/react-icons';
 import { useToast } from '@/hooks/use-toast';
-import axios from 'axios';
+import api, { clearAuthData } from '@/lib/api';
 
 const DashboardLayout = () => {
   const isMobile = useIsMobile();
@@ -41,8 +41,7 @@ const DashboardLayout = () => {
       window.location.href = websiteURL + '/login';
     }
     async function dashboardData() {
-      const postURL = serverURL + `/api/dashboard`;
-      const response = await axios.post(postURL);
+      const response = await api.post('/api/dashboard');
       sessionStorage.setItem('adminEmail', response.data.admin.email);
       if (response.data.admin.email === sessionStorage.getItem('email')) {
         setAdmin(true);
@@ -76,7 +75,7 @@ const DashboardLayout = () => {
   }
 
   function Logout() {
-    sessionStorage.clear();
+    clearAuthData();
     toast({
       title: "Logged Out",
       description: "You have logged out successfully",

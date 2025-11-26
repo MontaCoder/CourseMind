@@ -34,7 +34,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { serverURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 import Logo from '../../res/logo.svg';
 
 const AdminLayout = () => {
@@ -51,8 +51,8 @@ const AdminLayout = () => {
 
   useEffect(() => {
     async function dashboardData() {
-      const postURL = serverURL + `/api/dashboard`;
-      const response = await axios.post(postURL);
+      const postURL = '/api/dashboard';
+      const response = await api.post(postURL);
       sessionStorage.setItem('adminEmail', response.data.admin.email);
       if (response.data.admin.email !== sessionStorage.getItem('email')) {
         redirectHome();
