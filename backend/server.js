@@ -6,7 +6,12 @@ import nodemailer from 'nodemailer';
 import cors from 'cors';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
-// import gis from 'g-i-s'; // Removed - replaced with Unsplash
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
+import { z } from 'zod';
 import youtubesearchapi from 'youtube-search-api';
 import { YoutubeTranscript } from 'youtube-transcript';
 import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from '@google/generative-ai';
@@ -25,11 +30,37 @@ const flw = new Flutterwave(process.env.FLUTTERWAVE_PUBLIC_KEY, process.env.FLUT
 
 //INITIALIZE
 const app = express();
-app.use(cors());
 const PORT = process.env.PORT;
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(express.json({ limit: '50mb' }));
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const SALT_ROUNDS = 10;
+
+// Security middleware
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+app.use(cors({
+    origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:8080', 'http://localhost:5173'],
+    credentials: true
+}));
+app.use(cookieParser());
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(express.json({ limit: '10mb' }));
+
+// Rate limiters - Skip AI endpoints for speed
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: { success: false, message: 'Too many attempts, try again later' }
+});
+const generalLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 100,
+    skip: (req) => req.path.includes('/prompt') || req.path.includes('/generate')
+});
+app.use('/api/', generalLimiter);
+
+// Database connection
 mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+
+// Email transporter
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 465,
@@ -40,8 +71,79 @@ const transporter = nodemailer.createTransport({
         pass: process.env.PASSWORD,
     },
 });
+
+// AI and Image services
 const genAI = new GoogleGenerativeAI(process.env.API_KEY);
 const unsplash = createApi({ accessKey: process.env.UNSPLASH_ACCESS_KEY });
+
+// Admin cache for fast lookups
+let adminCache = { emails: new Set(), lastUpdate: 0 };
+const ADMIN_CACHE_TTL = 5 * 60 * 1000;
+
+const refreshAdminCache = async () => {
+    try {
+        const admins = await Admin.find().select('email').lean();
+        adminCache = { emails: new Set(admins.map(a => a.email)), lastUpdate: Date.now() };
+    } catch (e) { console.error('Admin cache error:', e); }
+};
+
+// Auth Middleware (~1ms overhead)
+const authMiddleware = (req, res, next) => {
+    const token = req.cookies?.token || req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ success: false, message: 'Authentication required' });
+    try {
+        req.user = jwt.verify(token, JWT_SECRET);
+        next();
+    } catch {
+        return res.status(401).json({ success: false, message: 'Invalid token' });
+    }
+};
+
+// Optional auth for public endpoints
+const optionalAuth = (req, res, next) => {
+    const token = req.cookies?.token || req.headers.authorization?.split(' ')[1];
+    if (token) { try { req.user = jwt.verify(token, JWT_SECRET); } catch {} }
+    next();
+};
+
+// Admin Middleware (cached)
+const adminMiddleware = async (req, res, next) => {
+    if (Date.now() - adminCache.lastUpdate > ADMIN_CACHE_TTL) await refreshAdminCache();
+    if (!adminCache.emails.has(req.user?.email)) {
+        return res.status(403).json({ success: false, message: 'Admin access required' });
+    }
+    next();
+};
+
+// Verify course ownership
+const verifyCourseOwner = async (req, res, next) => {
+    const courseId = req.body.courseId || req.query.courseId;
+    if (!courseId) return res.status(400).json({ success: false, message: 'Course ID required' });
+    const course = await Course.findById(courseId).select('user').lean();
+    if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
+    if (course.user !== req.user?.userId) {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    next();
+};
+
+// Validation schemas
+const schemas = {
+    signup: z.object({ email: z.string().email(), mName: z.string().min(1).max(100), password: z.string().min(6), type: z.string().optional() }),
+    signin: z.object({ email: z.string().email(), password: z.string().min(1) }),
+    prompt: z.object({ prompt: z.string().min(1).max(50000) })
+};
+const validate = (name) => (req, res, next) => {
+    const result = schemas[name]?.safeParse(req.body);
+    if (!result?.success) return res.status(400).json({ success: false, message: 'Invalid input' });
+    req.validated = result.data;
+    next();
+};
+
+// Helpers
+const generateToken = (user) => jwt.sign({ userId: user._id.toString(), email: user.email, type: user.type }, JWT_SECRET, { expiresIn: '7d' });
+const setAuthCookie = (res, token) => res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 7 * 24 * 60 * 60 * 1000 });
+const sanitizeUser = (user) => ({ _id: user._id, email: user.email, mName: user.mName, type: user.type });
 
 //SCHEMA
 const adminSchema = new mongoose.Schema({
@@ -133,89 +235,98 @@ const BlogSchema = mongoose.model('Blog', blogSchema);
 //REQUEST
 
 //SIGNUP
-app.post('/api/signup', async (req, res) => {
-    const { email, mName, password, type } = req.body;
+app.post('/api/signup', authLimiter, validate('signup'), async (req, res) => {
+    const { email, mName, password, type } = req.validated;
 
     try {
+        const existingUser = await User.findOne({ email }).lean();
+        if (existingUser) {
+            return res.json({ success: false, message: 'User with this email already exists' });
+        }
+        const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
         const estimate = await User.estimatedDocumentCount();
-        if (estimate > 0) {
-            const existingUser = await User.findOne({ email });
-            if (existingUser) {
-                return res.json({ success: false, message: 'User with this email already exists' });
-            }
-            const newUser = new User({ email, mName, password, type });
-            await newUser.save();
-            res.json({ success: true, message: 'Account created successfully', userId: newUser._id });
-        } else {
-            const newUser = new User({ email, mName, password, type: 'forever' });
-            await newUser.save();
+        const isFirstUser = estimate === 0;
+        const userType = isFirstUser ? 'forever' : (type || 'free');
+        const newUser = new User({ email, mName, password: hashedPassword, type: userType });
+        await newUser.save();
+        if (isFirstUser) {
             const newAdmin = new Admin({ email, mName, type: 'main' });
             await newAdmin.save();
-            res.json({ success: true, message: 'Account created successfully', userId: newUser._id });
+            await refreshAdminCache();
         }
+        const token = generateToken(newUser);
+        setAuthCookie(res, token);
+        res.json({ success: true, message: 'Account created successfully', userId: newUser._id, token, userData: sanitizeUser(newUser) });
     } catch (error) {
-        console.log('Error', error);
+        console.error('Signup error:', error.message);
         res.status(500).json({ success: false, message: 'Internal server error' });
     }
 });
 
 //SIGNIN
-app.post('/api/signin', async (req, res) => {
-    const { email, password } = req.body;
+app.post('/api/signin', authLimiter, validate('signin'), async (req, res) => {
+    const { email, password } = req.validated;
 
     try {
         const user = await User.findOne({ email });
-
         if (!user) {
             return res.json({ success: false, message: 'Invalid email or password' });
         }
 
-        if (password === user.password) {
-            return res.json({ success: true, message: 'SignIn Successful', userData: user });
+        // Support both hashed and legacy plaintext passwords
+        let isValid = false;
+        if (user.password && user.password.startsWith('$2')) {
+            isValid = await bcrypt.compare(password, user.password);
+        } else {
+            isValid = password === user.password;
+            // Migrate to hashed password on successful login
+            if (isValid && password) {
+                user.password = await bcrypt.hash(password, SALT_ROUNDS);
+                await user.save();
+            }
+        }
+
+        if (isValid) {
+            const token = generateToken(user);
+            setAuthCookie(res, token);
+            return res.json({ success: true, message: 'SignIn Successful', token, userData: sanitizeUser(user) });
         }
 
         res.json({ success: false, message: 'Invalid email or password' });
-
     } catch (error) {
-        console.log('Error', error);
+        console.error('Signin error:', error.message);
         res.status(500).json({ success: false, message: 'Invalid email or password' });
     }
-
 });
-
 //SIGNINSOCIAL
-app.post('/api/social', async (req, res) => {
+app.post('/api/social', authLimiter, async (req, res) => {
     const { email, name } = req.body;
-    let mName = name;
-    let password = '';
-    let type = 'free';
+    if (!email || !name) return res.status(400).json({ success: false, message: 'Email and name required' });
+    
     try {
-        const user = await User.findOne({ email });
+        let user = await User.findOne({ email });
 
         if (!user) {
             const estimate = await User.estimatedDocumentCount();
-            if (estimate > 0) {
-                const newUser = new User({ email, mName, password, type });
-                await newUser.save();
-                res.json({ success: true, message: 'Account created successfully', userData: newUser });
-            } else {
-                const newUser = new User({ email, mName, password, type });
-                await newUser.save();
-                const newAdmin = new Admin({ email, mName, type: 'main' });
+            const isFirstUser = estimate === 0;
+            user = new User({ email, mName: name, password: '', type: isFirstUser ? 'forever' : 'free' });
+            await user.save();
+            
+            if (isFirstUser) {
+                const newAdmin = new Admin({ email, mName: name, type: 'main' });
                 await newAdmin.save();
-                res.json({ success: true, message: 'Account created successfully', userData: newUser });
+                await refreshAdminCache();
             }
-        } else {
-            return res.json({ success: true, message: 'SignIn Successful', userData: user });
         }
-
+        
+        const token = generateToken(user);
+        setAuthCookie(res, token);
+        res.json({ success: true, message: 'SignIn Successful', token, userData: sanitizeUser(user) });
     } catch (error) {
-        console.log('Error', error);
+        console.error('Social login error:', error.message);
         res.status(500).json({ success: false, message: 'Internal Server Error' });
     }
-
 });
-
 //SEND MAIL
 app.post('/api/data', async (req, res) => {
     const receivedData = req.body;
@@ -311,16 +422,21 @@ app.post('/api/reset-password', async (req, res) => {
     const { password, token } = req.body;
 
     try {
+        if (!password || password.length < 6) {
+            return res.json({ success: false, message: 'Password must be at least 6 characters' });
+        }
+
         const user = await User.findOne({
             resetPasswordToken: token,
             resetPasswordExpires: { $gt: Date.now() },
         });
 
         if (!user) {
-            return res.json({ success: true, message: 'Invalid or expired token' });
+            return res.json({ success: false, message: 'Invalid or expired token' });
         }
 
-        user.password = password;
+        // Hash the new password
+        user.password = await bcrypt.hash(password, SALT_ROUNDS);
         user.resetPasswordToken = null;
         user.resetPasswordExpires = null;
 
@@ -329,7 +445,7 @@ app.post('/api/reset-password', async (req, res) => {
         res.json({ success: true, message: 'Password updated successfully', email: user.email });
 
     } catch (error) {
-        console.log('Error', error);
+        console.error('Reset password error:', error.message);
         res.status(500).json({ success: false, message: 'Internal server error' });
     }
 });
@@ -471,7 +587,7 @@ app.post('/api/transcript', async (req, res) => {
 });
 
 //STORE COURSE
-app.post('/api/course', async (req, res) => {
+app.post('/api/course', authMiddleware, async (req, res) => {
     const { user, content, type, mainTopic, lang } = req.body;
 
     unsplash.search.getPhotos({
@@ -522,7 +638,7 @@ app.post('/api/courseshared', async (req, res) => {
 });
 
 //UPDATE COURSE
-app.post('/api/update', async (req, res) => {
+app.post('/api/update', authMiddleware, async (req, res) => {
     const { content, courseId } = req.body;
     try {
 
@@ -542,7 +658,7 @@ app.post('/api/update', async (req, res) => {
 });
 
 //DELETE COURSE
-app.post('/api/deletecourse', async (req, res) => {
+app.post('/api/deletecourse', authMiddleware, async (req, res) => {
     const { courseId } = req.body;
     try {
         await Course.findOneAndDelete({ _id: courseId });
@@ -553,7 +669,7 @@ app.post('/api/deletecourse', async (req, res) => {
     }
 });
 
-app.post('/api/finish', async (req, res) => {
+app.post('/api/finish', authMiddleware, async (req, res) => {
     const { courseId } = req.body;
     try {
 
@@ -606,7 +722,7 @@ app.post('/api/sendcertificate', async (req, res) => {
 });
 
 // Backend: Modify API to handle pagination
-app.get('/api/courses', async (req, res) => {
+app.get('/api/courses', authMiddleware, async (req, res) => {
     try {
         const { userId, page = 1, limit = 9 } = req.query;
         const skip = (page - 1) * limit;
@@ -636,37 +752,35 @@ app.get('/api/shareable', async (req, res) => {
 });
 
 //GET PROFILE DETAILS
-app.post('/api/profile', async (req, res) => {
+app.post('/api/profile', authMiddleware, async (req, res) => {
     const { email, mName, password, uid } = req.body;
+    
+    // Verify user can only update their own profile
+    if (uid !== req.user?.userId) {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    
     try {
-
-        if (password === '') {
-            await User.findOneAndUpdate(
-                { _id: uid },
-                { $set: { email: email, mName: mName } }
-            ).then(result => {
-                res.json({ success: true, message: 'Profile Updated' });
-            }).catch(error => {
-
-                res.status(500).json({ success: false, message: 'Internal server error' });
-            })
-        } else {
-            await User.findOneAndUpdate(
-                { _id: uid },
-                { $set: { email: email, mName: mName, password: password } }
-            ).then(result => {
-                res.json({ success: true, message: 'Profile Updated' });
-            }).catch(error => {
-
-                res.status(500).json({ success: false, message: 'Internal server error' });
-            })
+        const updateData = { email, mName };
+        
+        // Hash password if provided
+        if (password && password.length > 0) {
+            if (password.length < 6) {
+                return res.json({ success: false, message: 'Password must be at least 6 characters' });
+            }
+            updateData.password = await bcrypt.hash(password, SALT_ROUNDS);
         }
 
+        await User.findOneAndUpdate(
+            { _id: uid },
+            { $set: updateData }
+        );
+        
+        res.json({ success: true, message: 'Profile Updated' });
     } catch (error) {
-        console.log('Error', error);
+        console.error('Profile update error:', error.message);
         res.status(500).json({ success: false, message: 'Internal server error' });
     }
-
 });
 
 //PAYPAL PAYMENT
@@ -1516,7 +1630,7 @@ app.post('/api/contact', async (req, res) => {
 //ADMIN PANEL
 
 //DASHBOARD
-app.post('/api/dashboard', async (req, res) => {
+app.post('/api/dashboard', authMiddleware, adminMiddleware, async (req, res) => {
     const users = await User.estimatedDocumentCount();
     const courses = await Course.estimatedDocumentCount();
     const admin = await Admin.findOne({ type: 'main' });
@@ -1534,7 +1648,7 @@ app.post('/api/dashboard', async (req, res) => {
 });
 
 //GET USERS
-app.get('/api/getusers', async (req, res) => {
+app.get('/api/getusers', authMiddleware, adminMiddleware, async (req, res) => {
     try {
         const users = await User.find({});
         res.json(users);
@@ -1544,7 +1658,7 @@ app.get('/api/getusers', async (req, res) => {
 });
 
 //GET COURES
-app.get('/api/getcourses', async (req, res) => {
+app.get('/api/getcourses', authMiddleware, adminMiddleware, async (req, res) => {
     try {
         const courses = await Course.find({});
         res.json(courses);
@@ -1554,7 +1668,7 @@ app.get('/api/getcourses', async (req, res) => {
 });
 
 //GET PAID USERS
-app.get('/api/getpaid', async (req, res) => {
+app.get('/api/getpaid', authMiddleware, adminMiddleware, async (req, res) => {
     try {
         const paidUsers = await User.find({ type: { $ne: 'free' } });
         res.json(paidUsers);
@@ -1564,7 +1678,7 @@ app.get('/api/getpaid', async (req, res) => {
 });
 
 //GET ADMINS
-app.get('/api/getadmins', async (req, res) => {
+app.get('/api/getadmins', authMiddleware, adminMiddleware, async (req, res) => {
     try {
         const users = await User.find({ email: { $nin: await getEmailsOfAdmins() } });
         const admins = await Admin.find({});
@@ -1580,7 +1694,7 @@ async function getEmailsOfAdmins() {
 }
 
 //ADD ADMIN
-app.post('/api/addadmin', async (req, res) => {
+app.post('/api/addadmin', authMiddleware, adminMiddleware, async (req, res) => {
     const { email } = req.body;
     try {
         const user = await User.findOne({ email: email });
@@ -1600,7 +1714,7 @@ app.post('/api/addadmin', async (req, res) => {
 });
 
 //REMOVE ADMIN
-app.post('/api/removeadmin', async (req, res) => {
+app.post('/api/removeadmin', authMiddleware, adminMiddleware, async (req, res) => {
     const { email } = req.body;
     try {
         await Admin.findOneAndDelete({ email: email });
@@ -1618,7 +1732,7 @@ app.post('/api/removeadmin', async (req, res) => {
 });
 
 //GET CONTACTS
-app.get('/api/getcontact', async (req, res) => {
+app.get('/api/getcontact', authMiddleware, adminMiddleware, async (req, res) => {
     try {
         const contacts = await Contact.find({});
         res.json(contacts);
@@ -1628,7 +1742,7 @@ app.get('/api/getcontact', async (req, res) => {
 });
 
 //SAVE ADMIN
-app.post('/api/saveadmin', async (req, res) => {
+app.post('/api/saveadmin', authMiddleware, adminMiddleware, async (req, res) => {
     const { data, type } = req.body;
     try {
         if (type === 'terms') {
@@ -2173,7 +2287,7 @@ app.post('/api/flutterdetails', async (req, res) => {
 });
 
 //GET NOTES
-app.post('/api/getnotes', async (req, res) => {
+app.post('/api/getnotes', authMiddleware, async (req, res) => {
     const { course } = req.body;
     try {
         const existingNotes = await NotesSchema.findOne({ course: course });
@@ -2189,7 +2303,7 @@ app.post('/api/getnotes', async (req, res) => {
 });
 
 //SAVE NOTES
-app.post('/api/savenotes', async (req, res) => {
+app.post('/api/savenotes', authMiddleware, async (req, res) => {
     const { course, notes } = req.body;
     try {
         const existingNotes = await NotesSchema.findOne({ course: course });
@@ -2212,7 +2326,7 @@ app.post('/api/savenotes', async (req, res) => {
 });
 
 //GENERATE EXAMS
-app.post('/api/aiexam', async (req, res) => {
+app.post('/api/aiexam', authMiddleware, async (req, res) => {
     const { courseId, mainTopic, subtopicsString, lang } = req.body;
 
     const existingNotes = await ExamSchema.findOne({ course: courseId });
@@ -2301,7 +2415,7 @@ app.post('/api/aiexam', async (req, res) => {
 });
 
 //UPDATE RESULT
-app.post('/api/updateresult', async (req, res) => {
+app.post('/api/updateresult', authMiddleware, async (req, res) => {
     const { courseId, marksString } = req.body;
     try {
 
@@ -2353,7 +2467,7 @@ app.post('/api/sendexammail', async (req, res) => {
 });
 
 //GET RESULT
-app.post('/api/getmyresult', async (req, res) => {
+app.post('/api/getmyresult', authMiddleware, async (req, res) => {
     const { courseId } = req.body;
     try {
 
@@ -2380,7 +2494,7 @@ app.post('/api/getmyresult', async (req, res) => {
 });
 
 //DELETE
-app.post('/api/deleteuser', async (req, res) => {
+app.post('/api/deleteuser', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.body;;
         const deletedUser = await User.findOneAndDelete({ _id: userId });
@@ -2401,7 +2515,7 @@ app.post('/api/deleteuser', async (req, res) => {
 });
 
 //CREATE Blog
-app.post('/api/createblog', async (req, res) => {
+app.post('/api/createblog', authMiddleware, adminMiddleware, async (req, res) => {
     try {
         const { title, excerpt, content, image, category, tags } = req.body;
         const buffer = Buffer.from(image.split(',')[1], 'base64');
@@ -2416,7 +2530,7 @@ app.post('/api/createblog', async (req, res) => {
 });
 
 //DELETE Blog
-app.post('/api/deleteblogs', async (req, res) => {
+app.post('/api/deleteblogs', authMiddleware, adminMiddleware, async (req, res) => {
     try {
         const { id } = req.body;
         await BlogSchema.findOneAndDelete({ _id: id });
@@ -2429,7 +2543,7 @@ app.post('/api/deleteblogs', async (req, res) => {
 
 
 //UPDATE Blog
-app.post('/api/updateblogs', async (req, res) => {
+app.post('/api/updateblogs', authMiddleware, adminMiddleware, async (req, res) => {
     try {
         const { id, type, value } = req.body;
         const booleanValue = value === 'true' ? true : false;
