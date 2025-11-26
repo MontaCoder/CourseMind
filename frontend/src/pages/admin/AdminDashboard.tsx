@@ -6,7 +6,7 @@ import { CustomPieChart, PieChartData } from '@/components/ui/custom-pie-chart';
 import { Users, Play, RotateCcw, DollarSign } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { serverURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 
 const usersPieData: PieChartData[] = [
   { name: 'Free', value: 0, color: '#F7F7F7' },
@@ -24,8 +24,8 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     async function dashboardData() {
-      const postURL = serverURL + `/api/dashboard`;
-      const response = await axios.post(postURL);
+      const postURL = '/api/dashboard';
+      const response = await api.post(postURL);
       sessionStorage.setItem('terms', response.data.admin.terms)
       sessionStorage.setItem('privacy', response.data.admin.privacy)
       sessionStorage.setItem('cancel', response.data.admin.cancel)

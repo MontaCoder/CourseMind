@@ -17,7 +17,7 @@ import { Separator } from '@/components/ui/separator';
 import { Search, Edit, Trash2, Eye, Plus, Calendar, StarOffIcon, TrendingUpIcon, TrendingDownIcon, MoreVertical } from 'lucide-react';
 import SEO from '@/components/SEO';
 import { serverURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 import { StarIcon } from '@radix-ui/react-icons';
 import { toast } from '@/hooks/use-toast';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -50,8 +50,8 @@ const AdminBlogs = () => {
 
     useEffect(() => {
         async function dashboardData() {
-            const postURL = serverURL + `/api/getblogs`;
-            const response = await axios.get(postURL);
+            const postURL = '/api/getblogs';
+            const response = await api.get(postURL);
             // Process images immediately
             const processedData = response.data.map((post: BlogPost) => ({
                 ...post,
@@ -104,8 +104,7 @@ const AdminBlogs = () => {
 
     async function deleteBlog(id: string) {
         setIsLoading(true);
-        const postURL = serverURL + '/api/deleteblogs';
-        const response = await axios.post(postURL, { id: id });
+        const response = await api.post('/api/deleteblogs', { id: id });
         if (response.data.success) {
             setIsLoading(false);
             toast({
@@ -124,8 +123,7 @@ const AdminBlogs = () => {
 
     async function updateBlog(id: string, type: string, value: string) {
         setIsLoading(true);
-        const postURL = serverURL + '/api/updateblogs';
-        const response = await axios.post(postURL, { id: id, type: type, value: value });
+        const response = await api.post('/api/updateblogs', { id: id, type: type, value: value });
         if (response.data.success) {
             setIsLoading(false);
             toast({

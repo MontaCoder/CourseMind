@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Save } from 'lucide-react';
 import { MinimalTiptapEditor } from '../../minimal-tiptap'
 import { serverURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { Content } from '@tiptap/react'
 
@@ -15,8 +15,7 @@ const AdminCancellation = () => {
 
   async function saveCancellation() {
     setIsLoading(true);
-    const postURL = serverURL + '/api/saveadmin';
-    const response = await axios.post(postURL, { data: value, type: 'cancel' });
+    const response = await api.post('/api/saveadmin', { data: value, type: 'cancel' });
     if (response.data.success) {
       sessionStorage.setItem('cancel', '' + value);
       setIsLoading(false);

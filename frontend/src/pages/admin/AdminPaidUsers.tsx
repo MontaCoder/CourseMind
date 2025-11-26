@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MonthType, serverURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 
 const AdminPaidUsers = () => {
 
@@ -27,8 +27,8 @@ const AdminPaidUsers = () => {
 
   useEffect(() => {
     async function dashboardData() {
-      const postURL = serverURL + `/api/getpaid`;
-      const response = await axios.get(postURL);
+      const postURL = '/api/getpaid';
+      const response = await api.get(postURL);
       setData(response.data);
       setIsLoading(false);
     }

@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { MinimalTiptapEditor } from '../../minimal-tiptap'
 import { Content } from '@tiptap/react'
 import { serverURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 
 const AdminTerms = () => {
@@ -16,8 +16,7 @@ const AdminTerms = () => {
 
   async function saveTerms() {
     setIsLoading(true);
-    const postURL = serverURL + '/api/saveadmin';
-    const response = await axios.post(postURL, { data: value, type: 'terms' });
+    const response = await api.post('/api/saveadmin', { data: value, type: 'terms' });
     if (response.data.success) {
       sessionStorage.setItem('terms', '' + value);
       setIsLoading(false);

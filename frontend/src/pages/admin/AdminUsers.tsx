@@ -8,7 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { serverURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const AdminUsers = () => {
@@ -30,8 +30,8 @@ const AdminUsers = () => {
 
   useEffect(() => {
     async function dashboardData() {
-      const postURL = serverURL + `/api/getusers`;
-      const response = await axios.get(postURL);
+      const postURL = '/api/getusers';
+      const response = await api.get(postURL);
       setData(response.data);
       setIsLoading(false);
     }

@@ -19,7 +19,7 @@ import SEO from '@/components/SEO';
 import { MinimalTiptapEditor } from '../../minimal-tiptap'
 import { Content } from '@tiptap/react'
 import { serverURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 
 const AdminCreateBlog = () => {
   const [title, setTitle] = useState('');
@@ -60,8 +60,7 @@ const AdminCreateBlog = () => {
     setIsSubmitting(true);
 
     try {
-      const postURL = serverURL + '/api/createblog';
-      const response = await axios.post(postURL, { title, excerpt, content, image: preview, category, tags });
+      const response = await api.post('/api/createblog', { title, excerpt, content, image: preview, category, tags });
       if (response.data.success) {
         toast({
           title: "Blog post created",

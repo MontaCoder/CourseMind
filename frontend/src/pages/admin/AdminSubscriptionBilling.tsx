@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { serverURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { MinimalTiptapEditor } from '../../minimal-tiptap'
 import { Content } from '@tiptap/react'
@@ -15,8 +15,7 @@ const AdminSubscriptionBilling = () => {
 
   async function saveBilling() {
     setIsLoading(true);
-    const postURL = serverURL + '/api/saveadmin';
-    const response = await axios.post(postURL, { data: value, type: 'billing' });
+    const response = await api.post('/api/saveadmin', { data: value, type: 'billing' });
     if (response.data.success) {
       sessionStorage.setItem('billing', '' + value);
       setIsLoading(false);
