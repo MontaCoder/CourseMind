@@ -7,9 +7,8 @@ import { Button } from '@/components/ui/button';
 import { CheckCircle, Loader } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { serverURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-
 
 interface CoursePreviewProps {
     isLoading: boolean;
@@ -60,8 +59,8 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
             prompt: prompt,
         };
         try {
-            const postURL = serverURL + '/api/generate';
-            const res = await axios.post(postURL, dataToSend);
+            const postURL = '/api/generate';
+            const res = await api.post(postURL, dataToSend);
             const generatedText = res.data.text;
             const htmlContent = generatedText;
 
@@ -92,8 +91,8 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
             prompt: promptImage,
         };
         try {
-            const postURL = serverURL + '/api/image';
-            const res = await axios.post(postURL, dataToSend);
+            const postURL = '/api/image';
+            const res = await api.post(postURL, dataToSend);
             try {
                 const generatedText = res.data.url;
                 sendData(generatedText, parsedJson);
@@ -123,8 +122,8 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
 
         const user = sessionStorage.getItem('uid');
         const content = JSON.stringify(topics);
-        const postURL = serverURL + '/api/course';
-        const response = await axios.post(postURL, { user, content, type, mainTopic: courseName, lang });
+        const postURL = '/api/course';
+        const response = await api.post(postURL, { user, content, type, mainTopic: courseName, lang });
 
         if (response.data.success) {
             sessionStorage.setItem('courseId', response.data.courseId);
@@ -157,8 +156,8 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
 
         const user = sessionStorage.getItem('uid');
         const content = JSON.stringify(topics);
-        const postURL = serverURL + '/api/course';
-        const response = await axios.post(postURL, { user, content, type, mainTopic: courseName, lang });
+        const postURL = '/api/course';
+        const response = await api.post(postURL, { user, content, type, mainTopic: courseName, lang });
 
         if (response.data.success) {
             sessionStorage.setItem('courseId', response.data.courseId);
@@ -190,8 +189,8 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
             prompt: query,
         };
         try {
-            const postURL = serverURL + '/api/yt';
-            const res = await axios.post(postURL, dataToSend);
+            const postURL = '/api/yt';
+            const res = await api.post(postURL, dataToSend);
             try {
                 const generatedText = res.data.url;
                 sendTranscript(generatedText, subtopic);
@@ -219,8 +218,8 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
             prompt: url,
         };
         try {
-            const postURL = serverURL + '/api/transcript';
-            const res = await axios.post(postURL, dataToSend);
+            const postURL = '/api/transcript';
+            const res = await api.post(postURL, dataToSend);
 
             try {
                 const generatedText = res.data.url;
@@ -244,8 +243,8 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
             prompt: prompt,
         };
         try {
-            const postURL = serverURL + '/api/generate';
-            const res = await axios.post(postURL, dataToSend);
+            const postURL = '/api/generate';
+            const res = await api.post(postURL, dataToSend);
             const generatedText = res.data.text;
             const htmlContent = generatedText;
 
@@ -279,9 +278,9 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
                     <h1 className="text-3xl font-bold tracking-tight mb-4">
                         <Skeleton className="h-10 w-3/4 mx-auto" />
                     </h1>
-                    <p className="text-muted-foreground max-w-lg mx-auto">
+                    <div className="text-muted-foreground max-w-lg mx-auto">
                         <Skeleton className="h-4 w-full mx-auto" />
-                    </p>
+                    </div>
                 </div>
 
                 <div className="space-y-6 max-w-3xl mx-auto">
@@ -306,6 +305,13 @@ const CoursePreview: React.FC<CoursePreviewProps> = ({
     }
 
     const renderTopicsAndSubtopics = (topicss) => {
+        if (!topicss || !Array.isArray(topicss)) {
+            return (
+                <div className="text-center text-muted-foreground py-8">
+                    <p>Failed to load course topics. Please try again.</p>
+                </div>
+            );
+        }
         return (
             <>
                 {topicss.map((topic, index) => (
