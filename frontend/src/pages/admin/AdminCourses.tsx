@@ -8,7 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { serverURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const AdminCourses = () => {
@@ -29,8 +29,8 @@ const AdminCourses = () => {
 
   useEffect(() => {
     async function dashboardData() {
-      const postURL = serverURL + `/api/getcourses`;
-      const response = await axios.get(postURL);
+      const postURL = '/api/getcourses';
+      const response = await api.get(postURL);
       setData(response.data);
       setIsLoading(false);
     }
