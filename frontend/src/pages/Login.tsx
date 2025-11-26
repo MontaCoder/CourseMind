@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowRight, Mail, Lock, AlertTriangle } from 'lucide-react';
 import { appName, facebookClientId, serverURL } from '@/constants';
 import Logo from '../res/logo.svg';
-import axios from 'axios';
+import api, { setAuthData } from '@/lib/api';
 import { GoogleLogin } from '@react-oauth/google';
 import { jwtDecode, type JwtPayload } from "jwt-decode";
 import FacebookLogin from '@greatsumini/react-facebook-login';
@@ -20,11 +20,14 @@ interface SocialJwtPayload extends JwtPayload {
   name?: string;
 }
 
-interface SocialAuthResponse {
+interface AuthResponse {
   success: boolean;
   message?: string;
+  token?: string;
   userData: {
     _id: string;
+    email: string;
+    mName: string;
     type: string;
   };
 }
@@ -65,17 +68,10 @@ const Login = () => {
       return;
     }
 
-    // This is where you would integrate authentication logic
     try {
-      // Simulate authentication delay
-      const postURL = serverURL + '/api/signin';
-      const response = await axios.post(postURL, { email, password });
-      if (response.data.success) {
-        sessionStorage.setItem('email', response.data.userData.email);
-        sessionStorage.setItem('mName', response.data.userData.mName);
-        sessionStorage.setItem('auth', 'true');
-        sessionStorage.setItem('uid', response.data.userData._id);
-        sessionStorage.setItem('type', response.data.userData.type);
+      const response = await api.post<AuthResponse>('/api/signin', { email, password });
+      if (response.data.success && response.data.token) {
+        setAuthData({ token: response.data.token, userData: response.data.userData });
         toast({
           title: "Login successful",
           description: "Welcome back to " + appName,
@@ -86,10 +82,9 @@ const Login = () => {
           getDataFromDatabase(sessionStorage.getItem('shared'));
         }
       } else {
-        setError(response.data.message);
+        setError(response.data.message || 'Login failed');
         setIsLoading(false);
       }
-
     } catch (err) {
       setError('Failed to login. Please check your credentials.');
       console.error(err);
@@ -99,9 +94,8 @@ const Login = () => {
   };
 
   async function getDataFromDatabase(id: string) {
-    const postURL = serverURL + `/api/shareable?id=${id}`;
     try {
-      const response = await axios.get(postURL);
+      const response = await api.get(`/api/shareable?id=${id}`);
       const dat = response.data[0].content;
       const jsonData = JSON.parse(dat);
       const type = response.data[0].type.toLowerCase();
@@ -109,14 +103,11 @@ const Login = () => {
       const user = sessionStorage.getItem('uid');
       const content = JSON.stringify(jsonData);
 
-      const postURLs = serverURL + '/api/courseshared';
-      const responses = await axios.post(postURLs, { user, content, type, mainTopic });
+      const responses = await api.post('/api/courseshared', { user, content, type, mainTopic });
       if (responses.data.success) {
         sessionStorage.removeItem('shared');
-        redirectHome();
-      } else {
-        redirectHome();
       }
+      redirectHome();
     } catch (error) {
       console.error(error);
       redirectHome();
@@ -205,31 +196,24 @@ const Login = () => {
                   setError('Missing Google profile information.');
                   return;
                 }
-                const postURL = serverURL + '/api/social';
                 try {
                   setIsLoading(true);
-                  const apiResponse = await axios.post<SocialAuthResponse>(postURL, { email, name });
-                  const { data } = apiResponse;
-                  if (data.success) {
+                  const response = await api.post<AuthResponse>('/api/social', { email, name });
+                  if (response.data.success && response.data.token) {
+                    setAuthData({ token: response.data.token, userData: response.data.userData });
                     toast({
                       title: "Login successful",
                       description: "Welcome back to " + appName,
                     });
-                    setIsLoading(false);
-                    sessionStorage.setItem('email', email);
-                    sessionStorage.setItem('mName', name);
-                    sessionStorage.setItem('auth', 'true');
-                    sessionStorage.setItem('uid', data.userData._id);
-                    sessionStorage.setItem('type', data.userData.type);
                     redirectHome();
                   } else {
-                    setIsLoading(false);
-                    setError(data.message ?? 'Unable to log in with Google.');
+                    setError(response.data.message ?? 'Unable to log in with Google.');
                   }
                 } catch (error) {
                   console.error(error);
-                  setIsLoading(false);
                   setError('Internal Server Error');
+                } finally {
+                  setIsLoading(false);
                 }
 
               }}
@@ -263,31 +247,24 @@ const Login = () => {
                   setError('Unable to fetch Facebook profile information.');
                   return;
                 }
-                const postURL = serverURL + '/api/social';
                 try {
                   setIsLoading(true);
-                  const apiResponse = await axios.post<SocialAuthResponse>(postURL, { email, name });
-                  const { data } = apiResponse;
-                  if (data.success) {
+                  const response = await api.post<AuthResponse>('/api/social', { email, name });
+                  if (response.data.success && response.data.token) {
+                    setAuthData({ token: response.data.token, userData: response.data.userData });
                     toast({
                       title: "Login successful",
                       description: "Welcome back to " + appName,
                     });
-                    setIsLoading(false);
-                    sessionStorage.setItem('email', email);
-                    sessionStorage.setItem('mName', name);
-                    sessionStorage.setItem('auth', 'true');
-                    sessionStorage.setItem('uid', data.userData._id);
-                    sessionStorage.setItem('type', data.userData.type);
                     redirectHome();
                   } else {
-                    setIsLoading(false);
-                    setError(data.message ?? 'Unable to log in with Facebook.');
+                    setError(response.data.message ?? 'Unable to log in with Facebook.');
                   }
                 } catch (error) {
                   console.error(error);
-                  setIsLoading(false);
                   setError('Internal Server Error');
+                } finally {
+                  setIsLoading(false);
                 }
               }}
             />

@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Mail, AlertTriangle, ArrowRight } from 'lucide-react';
 import { appLogo, appName, companyName, serverURL } from '@/constants';
 import Logo from '../res/logo.svg';
-import axios from 'axios';
+import api from '@/lib/api';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
@@ -32,8 +32,7 @@ const ForgotPassword = () => {
     }
 
     try {
-      const postURL = serverURL + '/api/forgot';
-      const response = await axios.post(postURL, { email, name: appName, company: companyName, logo: appLogo });
+      const response = await api.post('/api/forgot', { email, name: appName, company: companyName, logo: appLogo });
       if (response.data.success) {
         setSuccess(true);
         toast({
