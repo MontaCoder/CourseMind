@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Link, useNavigate } from 'react-router-dom';
 import SEO from '@/components/SEO';
 import { appLogo, serverURL, websiteURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
@@ -32,8 +32,7 @@ const Dashboard = () => {
   }
 
   async function redirectCourse(content: string, mainTopic: string, type: string, courseId: string, completed: string, end: string) {
-    const postURL = serverURL + '/api/getmyresult';
-    const response = await axios.post(postURL, { courseId });
+    const response = await api.post('/api/getmyresult', { courseId });
     if (response.data.success) {
       const jsonData = JSON.parse(content);
       sessionStorage.setItem('courseId', courseId);
@@ -75,8 +74,7 @@ const Dashboard = () => {
 
   const handleDeleteCourse = async (courseId: number) => {
     setIsLoading(true);
-    const postURL = serverURL + '/api/deletecourse';
-    const response = await axios.post(postURL, { courseId: courseId });
+    const response = await api.post('/api/deletecourse', { courseId: courseId });
     if (response.data.success) {
       setIsLoading(false);
       toast({
@@ -96,9 +94,8 @@ const Dashboard = () => {
   const fetchUserCourses = useCallback(async () => {
     setIsLoading(page === 1);
     setLoadingMore(page > 1);
-    const postURL = `${serverURL}/api/courses?userId=${userId}&page=${page}&limit=9`;
     try {
-      const response = await axios.get(postURL);
+      const response = await api.get(`/api/courses?userId=${userId}&page=${page}&limit=9`);
       if (response.data.length === 0) {
         setHasMore(false);
       } else {
@@ -182,8 +179,7 @@ const Dashboard = () => {
   }
 
   async function getQuiz(courseId: string) {
-    const postURL = serverURL + '/api/getmyresult';
-    const response = await axios.post(postURL, { courseId });
+    const response = await api.post('/api/getmyresult', { courseId });
     if (response.data.success) {
       return response.data.message;
     } else {

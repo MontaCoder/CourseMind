@@ -8,7 +8,7 @@ import { CheckCircle, Download, ArrowRight, Receipt } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { appLogo, companyName, MonthCost, serverURL, websiteURL, YearCost } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 
 const PaymentSuccess = () => {
 
@@ -129,8 +129,8 @@ const PaymentSuccess = () => {
         uid: sessionStorage.getItem('uid'),
         plan: sessionStorage.getItem('plan')
       };
-      const postURL = serverURL + '/api/stripedetails';
-      await axios.post(postURL, dataToSend).then(res => {
+      const postURL = '/api/stripedetails';
+      await api.post(postURL, dataToSend).then(res => {
         sessionStorage.setItem('type', sessionStorage.getItem('plan'));
         sendEmail();
       });
@@ -140,8 +140,8 @@ const PaymentSuccess = () => {
         uid: sessionStorage.getItem('uid'),
         plan: sessionStorage.getItem('plan')
       };
-      const postURL = serverURL + '/api/paystackfetch';
-      await axios.post(postURL, dataToSend).then(res => {
+      const postURL = '/api/paystackfetch';
+      await api.post(postURL, dataToSend).then(res => {
         sessionStorage.setItem('type', sessionStorage.getItem('plan'));
         sendEmail();
       });
@@ -151,8 +151,8 @@ const PaymentSuccess = () => {
         uid: sessionStorage.getItem('uid'),
         plan: sessionStorage.getItem('plan')
       };
-      const postURL = serverURL + '/api/flutterdetails';
-      await axios.post(postURL, dataToSend).then(res => {
+      const postURL = '/api/flutterdetails';
+      await api.post(postURL, dataToSend).then(res => {
         sessionStorage.setItem('type', sessionStorage.getItem('plan'));
         sendEmail();
       });
@@ -165,14 +165,14 @@ const PaymentSuccess = () => {
       };
       try {
         if (sessionStorage.getItem('method') === 'paypal') {
-          const postURL = serverURL + '/api/paypaldetails';
-          await axios.post(postURL, dataToSend).then(res => {
+          const postURL = '/api/paypaldetails';
+          await api.post(postURL, dataToSend).then(res => {
             sessionStorage.setItem('type', sessionStorage.getItem('plan'));
             sendEmail();
           });
         } else if (sessionStorage.getItem('method') === 'razorpay') {
-          const postURL = serverURL + '/api/razorapydetails';
-          await axios.post(postURL, dataToSend).then(res => {
+          const postURL = '/api/razorapydetails';
+          await api.post(postURL, dataToSend).then(res => {
             sessionStorage.setItem('type', sessionStorage.getItem('plan'));
             sendEmail();
           });
@@ -243,8 +243,8 @@ const PaymentSuccess = () => {
       const subscription = planId;
       const subscriberId = sessionStorage.getItem('email');
       const method = sessionStorage.getItem('method');
-      const postURL = serverURL + '/api/sendreceipt';
-      await axios.post(postURL, { html, email, plan, subscriberId, user, method, subscription });
+      const postURL = '/api/sendreceipt';
+      await api.post(postURL, { html, email, plan, subscriberId, user, method, subscription });
     } catch (error) {
       console.error(error);
     }

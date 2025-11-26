@@ -40,7 +40,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from '@/hooks/use-toast';
 import { amountInZarOne, amountInZarTwo, appLogo, appName, companyName, flutterwaveEnabled, flutterwavePlanIdOne, flutterwavePlanIdTwo, flutterwavePublicKey, FreeCost, FreeType, MonthCost, MonthType, paypalEnabled, paypalPlanIdOne, paypalPlanIdTwo, paystackEnabled, paystackPlanIdOne, paystackPlanIdTwo, razorpayEnabled, razorpayPlanIdOne, razorpayPlanIdTwo, serverURL, stripeEnabled, stripePlanIdOne, stripePlanIdTwo, YearCost, YearType } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 import { useFlutterwave } from 'flutterwave-react-v3';
 
 // Form validation schema
@@ -187,8 +187,8 @@ const PaymentDetails = () => {
       fullAddress: fullAddress
     };
     try {
-      const postURL = serverURL + '/api/razorpaycreate';
-      const res = await axios.post(postURL, dataToSend);
+      const postURL = '/api/razorpaycreate';
+      const res = await api.post(postURL, dataToSend);
       sessionStorage.setItem('method', 'razorpay');
       setIsProcessing(false);
       sessionStorage.setItem('plan', plan.name);
@@ -217,8 +217,8 @@ const PaymentDetails = () => {
       email: data.email
     };
     try {
-      const postURL = serverURL + '/api/paystackpayment';
-      const res = await axios.post(postURL, dataToSend);
+      const postURL = '/api/paystackpayment';
+      const res = await api.post(postURL, dataToSend);
       sessionStorage.setItem('paystack', res.data.id);
       sessionStorage.setItem('method', 'paystack');
       sessionStorage.setItem('plan', plan.name);
@@ -264,8 +264,8 @@ const PaymentDetails = () => {
       planId: planId
     };
     try {
-      const postURL = serverURL + '/api/stripepayment';
-      const res = await axios.post(postURL, dataToSend);
+      const postURL = '/api/stripepayment';
+      const res = await api.post(postURL, dataToSend);
       sessionStorage.setItem('stripe', res.data.id);
       sessionStorage.setItem('method', 'stripe');
       sessionStorage.setItem('plan', plan.name);
@@ -501,8 +501,8 @@ const PaymentDetails = () => {
       admin: data.state
     };
     try {
-      const postURL = serverURL + '/api/paypal';
-      const res = await axios.post(postURL, dataToSend);
+      const postURL = '/api/paypal';
+      const res = await api.post(postURL, dataToSend);
       sessionStorage.setItem('method', 'paypal');
       sessionStorage.setItem('plan', plan.name);
       setIsProcessing(false);

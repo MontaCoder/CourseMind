@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, FileText, AlertCircle, Mail, Shield, BookOpen, CreditCard } from 'lucide-react';
 import { appName, serverURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 import StyledText from '@/components/styledText';
 
 const CancellationPolicy = () => {
@@ -14,8 +14,8 @@ const CancellationPolicy = () => {
 
   useEffect(() => {
     async function dashboardData() {
-      const postURL = serverURL + `/api/policies`;
-      const response = await axios.get(postURL);
+      const postURL = '/api/policies';
+      const response = await api.get(postURL);
       setData(response.data[0].cancel)
     }
     dashboardData();

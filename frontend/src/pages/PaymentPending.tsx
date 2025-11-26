@@ -7,7 +7,7 @@ import { Clock, ExternalLink, CheckCircle, Home } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { serverURL, websiteURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 
 const PaymentPending = () => {
     const navigate = useNavigate();
@@ -26,8 +26,8 @@ const PaymentPending = () => {
                 description: "Checking your payment status...",
             });
             setProcessing(true);
-            const postURL = serverURL + '/api/razorapypending';
-            await axios.post(postURL, dataToSend).then(res => {
+            const postURL = '/api/razorapypending';
+            await api.post(postURL, dataToSend).then(res => {
                 if (res.data.status === 'active') {
                     setProcessing(true);
                     const approveHref = websiteURL + '/payment-success/' + sub;

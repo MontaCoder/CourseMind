@@ -28,7 +28,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { appLogo, companyName, serverURL, websiteURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 import ShareOnSocial from 'react-share-on-social';
 import StyledText from '@/components/styledText';
 import html2pdf from 'html2pdf.js';
@@ -63,8 +63,7 @@ const CoursePage = () => {
 
   async function getNotes() {
     try {
-      const postURL = serverURL + '/api/getnotes';
-      const response = await axios.post(postURL, { course: courseId });
+      const response = await api.post('/api/getnotes', { course: courseId });
       if (response.data.success) {
         setValue(response.data.message);
       }
@@ -74,8 +73,7 @@ const CoursePage = () => {
   }
 
   const handleSaveNote = async () => {
-    const postURL = serverURL + '/api/savenotes';
-    const response = await axios.post(postURL, { course: courseId, notes: value });
+    const response = await api.post('/api/savenotes', { course: courseId, notes: value });
     if (response.data.success) {
       toast({
         title: "Note saved",
@@ -225,10 +223,10 @@ const CoursePage = () => {
 
     const mainPrompt = defaultPrompt + newMessage;
     const dataToSend = { prompt: mainPrompt };
-    const url = serverURL + '/api/chat';
+    const url = '/api/chat';
 
     try {
-      const response = await axios.post(url, dataToSend);
+      const response = await api.post(url, dataToSend);
       if (response.data.success === false) {
         toast({
           title: "Error",
@@ -311,8 +309,8 @@ const CoursePage = () => {
       prompt: prompt,
     };
     try {
-      const postURL = serverURL + '/api/generate';
-      const res = await axios.post(postURL, dataToSend);
+      const postURL = '/api/generate';
+      const res = await api.post(postURL, dataToSend);
       const generatedText = res.data.text;
       const htmlContent = generatedText;
       try {
@@ -342,8 +340,8 @@ const CoursePage = () => {
       prompt: promptImage,
     };
     try {
-      const postURL = serverURL + '/api/image';
-      const res = await axios.post(postURL, dataToSend);
+      const postURL = '/api/image';
+      const res = await api.post(postURL, dataToSend);
       try {
         const generatedText = res.data.url;
         sendData(generatedText, parsedJson, topics, sub);
@@ -413,8 +411,8 @@ const CoursePage = () => {
       courseId: courseId
     };
     try {
-      const postURL = serverURL + '/api/update';
-      await axios.post(postURL, dataToSend);
+      const postURL = '/api/update';
+      await api.post(postURL, dataToSend);
     } catch (error) {
       console.error(error);
       toast({
@@ -430,8 +428,8 @@ const CoursePage = () => {
       prompt: query,
     };
     try {
-      const postURL = serverURL + '/api/yt';
-      const res = await axios.post(postURL, dataToSend);
+      const postURL = '/api/yt';
+      const res = await api.post(postURL, dataToSend);
 
       try {
         const generatedText = res.data.url;
@@ -460,8 +458,8 @@ const CoursePage = () => {
       prompt: url,
     };
     try {
-      const postURL = serverURL + '/api/transcript';
-      const res = await axios.post(postURL, dataToSend);
+      const postURL = '/api/transcript';
+      const res = await api.post(postURL, dataToSend);
 
       try {
         const generatedText = res.data.url;
@@ -487,8 +485,8 @@ const CoursePage = () => {
       prompt: prompt,
     };
     try {
-      const postURL = serverURL + '/api/generate';
-      const res = await axios.post(postURL, dataToSend);
+      const postURL = '/api/generate';
+      const res = await api.post(postURL, dataToSend);
       const generatedText = res.data.text;
       const htmlContent = generatedText;
       try {
@@ -649,8 +647,7 @@ const CoursePage = () => {
         const titleOfSubTopic = topicTemp.title;
         subtopicsString = subtopicsString + ' , ' + titleOfSubTopic;
       });
-      const postURL = serverURL + '/api/aiexam';
-      const response = await axios.post(postURL, { courseId, mainTopic, subtopicsString, lang });
+      const response = await api.post('/api/aiexam', { courseId, mainTopic, subtopicsString, lang });
       if (response.data.success) {
         setIsLoading(false);
         const questions = JSON.parse(response.data.message);
@@ -724,8 +721,7 @@ const CoursePage = () => {
         courseId: courseId
       };
       try {
-        const postURL = serverURL + '/api/finish';
-        const response = await axios.post(postURL, dataToSend);
+        const response = await api.post('/api/finish', dataToSend);
         if (response.data.success) {
           const today = new Date();
           const formattedDate = today.toLocaleDateString('en-GB');
@@ -779,8 +775,8 @@ const CoursePage = () => {
                 </html>`;
 
     try {
-      const postURL = serverURL + '/api/sendcertificate';
-      await axios.post(postURL, { html, email }).then(res => {
+      const postURL = '/api/sendcertificate';
+      await api.post(postURL, { html, email }).then(res => {
         navigate('/course/'+courseId+'/certificate', { state: { courseTitle: mainTopic, end: formattedDate } });
       }).catch(error => {
         console.error(error);

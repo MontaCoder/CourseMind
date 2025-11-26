@@ -12,7 +12,7 @@ import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-import axios from 'axios';
+import api from '@/lib/api';
 import { serverURL } from '@/constants';
 
 
@@ -57,7 +57,7 @@ const QuizPage = () => {
     async function updateResult(correct) {
         const marks = correct * 10;
         const marksString = "" + marks;
-        await axios.post(serverURL + '/api/updateresult', { courseId, marksString });
+        await api.post('/api/updateresult', { courseId, marksString });
     }
 
 

@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, FileText } from 'lucide-react';
 import { serverURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 import StyledText from '@/components/styledText';
 
 const SubscriptionBillingPolicy = () => {
@@ -13,8 +13,8 @@ const SubscriptionBillingPolicy = () => {
 
   useEffect(() => {
     async function dashboardData() {
-      const postURL = serverURL + `/api/policies`;
-      const response = await axios.get(postURL);
+      const postURL = '/api/policies';
+      const response = await api.get(postURL);
       setData(response.data[0].billing)
     }
     dashboardData();

@@ -13,7 +13,7 @@ import CoursePreview from '@/components/CoursePreview';
 import SEO from '@/components/SEO';
 import { useToast } from '@/hooks/use-toast';
 import { serverURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 
 const courseFormSchema = z.object({
   topic: z.string().min(3, { message: "Topic must be at least 3 characters" }),
@@ -186,20 +186,21 @@ const GenerateCourse = () => {
       prompt: prompt,
     };
     try {
-      const postURL = serverURL + '/api/prompt';
-      const res = await axios.post(postURL, dataToSend);
+      const postURL = '/api/prompt';
+      const res = await api.post(postURL, dataToSend);
       const generatedText = res.data.generatedText;
-      const cleanedJsonString = generatedText.replace(/```json/g, '').replace(/```/g, '');
+      const cleanedJsonString = generatedText.replace(/```json/g, '').replace(/```/g, '').trim();
       try {
         const parsedJson = JSON.parse(cleanedJsonString);
-        setGeneratedTopics(parsedJson)
+        setGeneratedTopics(parsedJson);
         setIsLoading(false);
       } catch (error) {
-        console.error(error);
+        console.error('JSON Parse Error:', error, 'Raw response:', cleanedJsonString.substring(0, 200));
         setIsLoading(false);
         toast({
-          title: "Error",
-          description: "Internal Server Error",
+          title: "Generation Failed",
+          description: "AI returned an invalid response. Please try again.",
+          variant: "destructive",
         });
       }
 

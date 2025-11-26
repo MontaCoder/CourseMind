@@ -7,7 +7,7 @@ import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { ArrowLeft, Search, Calendar, User, Tag, ArrowRight, Clock } from 'lucide-react';
 import SEO from '@/components/SEO';
 import { appName, serverURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface BlogPost {
@@ -40,8 +40,8 @@ const Blog = () => {
 
   useEffect(() => {
     async function dashboardData() {
-      const postURL = serverURL + `/api/getblogs`;
-      const response = await axios.get(postURL);
+      const postURL = '/api/getblogs';
+      const response = await api.get(postURL);
       // Process images immediately
       const processedData = response.data.map((post: BlogPost) => ({
         ...post,
