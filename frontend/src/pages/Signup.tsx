@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowRight, Mail, Lock, User, AlertTriangle } from 'lucide-react';
 import { appLogo, appName, companyName, facebookClientId, serverURL, websiteURL } from '@/constants';
 import Logo from '../res/logo.svg';
-import axios from 'axios';
+import api, { setAuthData } from '@/lib/api';
 import { GoogleLogin } from '@react-oauth/google';
 import { jwtDecode, type JwtPayload } from "jwt-decode";
 import FacebookLogin from '@greatsumini/react-facebook-login';
@@ -21,11 +21,15 @@ interface SocialJwtPayload extends JwtPayload {
   name?: string;
 }
 
-interface SocialAuthResponse {
+interface AuthResponse {
   success: boolean;
   message?: string;
+  token?: string;
+  userId?: string;
   userData: {
     _id: string;
+    email: string;
+    mName: string;
     type: string;
   };
 }
@@ -78,28 +82,18 @@ const Signup = () => {
 
     setIsLoading(true);
 
-    // This is where you would integrate signup logic
     try {
-      const postURL = serverURL + '/api/signup';
-      const type = 'free';
-
-      const response = await axios.post(postURL, { email, mName: name, password, type });
-      if (response.data.success) {
-        sessionStorage.setItem('email', email);
-        sessionStorage.setItem('mName', name);
-        sessionStorage.setItem('auth', 'true');
-        sessionStorage.setItem('uid', response.data.userId);
-        sessionStorage.setItem('type', 'free');
+      const response = await api.post<AuthResponse>('/api/signup', { email, mName: name, password, type: 'free' });
+      if (response.data.success && response.data.token) {
+        setAuthData({ token: response.data.token, userData: response.data.userData });
         toast({
           title: "Account created!",
           description: "Welcome to " + appName + ".",
         });
         sendEmail(email, name);
       } else {
-        setError(response.data.message);
-        setIsLoading(false);
+        setError(response.data.message || 'Signup failed');
       }
-
     } catch (err) {
       setError('Failed to create account. Please try again.');
       console.error(err);
@@ -151,8 +145,7 @@ const Signup = () => {
                 
                 </html>`
       };
-      const postURL = serverURL + '/api/data';
-      await axios.post(postURL, dataToSend).then(res => {
+      await api.post('/api/data', dataToSend).then(() => {
         redirectHome();
       }).catch(error => {
         console.error(error);
@@ -283,31 +276,24 @@ const Signup = () => {
                   setError('Missing Google profile information.');
                   return;
                 }
-                const postURL = serverURL + '/api/social';
                 try {
                   setIsLoading(true);
-                  const apiResponse = await axios.post<SocialAuthResponse>(postURL, { email, name });
-                  const { data } = apiResponse;
-                  if (data.success) {
+                  const response = await api.post<AuthResponse>('/api/social', { email, name });
+                  if (response.data.success && response.data.token) {
+                    setAuthData({ token: response.data.token, userData: response.data.userData });
                     toast({
-                      title: "Login successful",
-                      description: "Welcome back to " + appName,
+                      title: "Account created!",
+                      description: "Welcome to " + appName,
                     });
-                    setIsLoading(false);
-                    sessionStorage.setItem('email', email);
-                    sessionStorage.setItem('mName', name);
-                    sessionStorage.setItem('auth', 'true');
-                    sessionStorage.setItem('uid', data.userData._id);
-                    sessionStorage.setItem('type', data.userData.type);
                     sendEmail(email, name);
                   } else {
-                    setIsLoading(false);
-                    setError(data.message ?? 'Unable to sign in with Google.');
+                    setError(response.data.message ?? 'Unable to sign in with Google.');
                   }
                 } catch (error) {
                   console.error(error);
-                  setIsLoading(false);
                   setError('Internal Server Error');
+                } finally {
+                  setIsLoading(false);
                 }
 
               }}
@@ -341,31 +327,24 @@ const Signup = () => {
                   setError('Unable to fetch Facebook profile information.');
                   return;
                 }
-                const postURL = serverURL + '/api/social';
                 try {
                   setIsLoading(true);
-                  const apiResponse = await axios.post<SocialAuthResponse>(postURL, { email, name });
-                  const { data } = apiResponse;
-                  if (data.success) {
+                  const response = await api.post<AuthResponse>('/api/social', { email, name });
+                  if (response.data.success && response.data.token) {
+                    setAuthData({ token: response.data.token, userData: response.data.userData });
                     toast({
-                      title: "Login successful",
-                      description: "Welcome back to " + appName,
+                      title: "Account created!",
+                      description: "Welcome to " + appName,
                     });
-                    setIsLoading(false);
-                    sessionStorage.setItem('email', email);
-                    sessionStorage.setItem('mName', name);
-                    sessionStorage.setItem('auth', 'true');
-                    sessionStorage.setItem('uid', data.userData._id);
-                    sessionStorage.setItem('type', data.userData.type);
                     sendEmail(email, name);
                   } else {
-                    setIsLoading(false);
-                    setError(data.message ?? 'Unable to sign in with Facebook.');
+                    setError(response.data.message ?? 'Unable to sign in with Facebook.');
                   }
                 } catch (error) {
                   console.error(error);
-                  setIsLoading(false);
                   setError('Internal Server Error');
+                } finally {
+                  setIsLoading(false);
                 }
               }}
             />

@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Key, AlertTriangle, ArrowRight, Check, Eye, EyeOff } from 'lucide-react';
 import { appLogo, appName, companyName, serverURL, websiteURL } from '@/constants';
 import Logo from '../res/logo.svg';
-import axios from 'axios';
+import api from '@/lib/api';
 
 const ResetPassword = () => {
   const [password, setPassword] = useState('');
@@ -94,9 +94,7 @@ const ResetPassword = () => {
     }
 
     try {
-      const postURL = serverURL + '/api/reset-password';
-
-      const response = await axios.post(postURL, { password, token });
+      const response = await api.post('/api/reset-password', { password, token });
       if (response.data.success) {
         setSuccess(true);
         toast({
@@ -158,8 +156,8 @@ const ResetPassword = () => {
             
             </html>`
       };
-      const postURL = serverURL + '/api/data';
-      await axios.post(postURL, dataToSend).then(res => {
+      const postURL = '/api/data';
+      await api.post(postURL, dataToSend).then(res => {
         redirectSignIn();
       }).catch(error => {
         redirectSignIn();
