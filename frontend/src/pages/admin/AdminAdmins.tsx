@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { CheckCircledIcon, CrossCircledIcon } from '@radix-ui/react-icons';
 import { serverURL } from '@/constants';
-import axios from 'axios';
+import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -32,8 +32,8 @@ const AdminAdmins = () => {
 
   useEffect(() => {
     async function dashboardData() {
-      const postURL = serverURL + `/api/getadmins`;
-      const response = await axios.get(postURL);
+      const postURL = '/api/getadmins';
+      const response = await api.get(postURL);
       setAdmin(response.data.admins)
       setUser(response.data.users)
       setIsLoading(false)
@@ -42,8 +42,7 @@ const AdminAdmins = () => {
   }, []);
 
   async function removeAdmin(email: string) {
-    const postURL = serverURL + '/api/removeadmin';
-    const response = await axios.post(postURL, { email });
+    const response = await api.post('/api/removeadmin', { email });
     if (response.data.success) {
       toast({
         title: "Admin Removed",
@@ -59,8 +58,7 @@ const AdminAdmins = () => {
   }
 
   async function addAdmin(email: string) {
-    const postURL = serverURL + '/api/addadmin';
-    const response = await axios.post(postURL, { email });
+    const response = await api.post('/api/addadmin', { email });
     if (response.data.success) {
       toast({
         title: "Admin Added",
