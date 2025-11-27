@@ -13,7 +13,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.1.1",
     "@greatsumini/react-facebook-login": "^3.4.0",
     "@hookform/resolvers": "^3.9.0",
     "@radix-ui/react-accordion": "^1.2.12",
@@ -62,7 +61,6 @@
     "lowlight": "^3.3.0",
     "lucide-react": "^0.462.0",
     "react": "^18.3.1",
-    "react-day-picker": "^8.10.1",
     "react-dom": "^18.3.1",
     "react-helmet-async": "^2.0.5",
     "react-hook-form": "^7.63.0",
@@ -70,15 +68,11 @@
     "react-router-dom": "^6.26.2",
     "react-share-on-social": "^1.0.12",
     "react-youtube": "^10.1.0",
-    "showdown": "^2.1.0",
     "sonner": "^1.5.0",
     "stripe": "^15.7.0",
     "tailwind-merge": "^2.5.2",
     "tailwindcss-animate": "^1.0.7",
-    "unsplash-js": "^7.0.20",
     "vaul": "^0.9.3",
-    "youtube-search-api": "^2.0.1",
-    "youtube-transcript": "^1.2.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
