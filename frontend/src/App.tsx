@@ -81,8 +81,6 @@ if ('serviceWorker' in navigator) {
 }
 
 // Service worker registration
-// TODO: Add failed payment link in server.js
-// TODO: Compare main server with edited server file
 
 const App = () => (
   <GoogleOAuthProvider clientId={googleClientId}>
