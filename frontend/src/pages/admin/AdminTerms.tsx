@@ -3,10 +3,8 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Save } from 'lucide-react';
-import { Textarea } from '@/components/ui/textarea';
 import { MinimalTiptapEditor } from '../../minimal-tiptap'
 import { Content } from '@tiptap/react'
-import { serverURL } from '@/constants';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 

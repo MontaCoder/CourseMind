@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Save } from 'lucide-react';
-import { serverURL } from '@/constants';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { MinimalTiptapEditor } from '../../minimal-tiptap'

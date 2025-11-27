@@ -1,12 +1,12 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, MoreVertical, Eye, Settings } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MonthType, serverURL } from '@/constants';
+import { MonthType } from '@/constants';
 import api from '@/lib/api';
 
 const AdminPaidUsers = () => {

@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Save } from 'lucide-react';
 import { MinimalTiptapEditor } from '../../minimal-tiptap'
-import { serverURL } from '@/constants';
 import api from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { Content } from '@tiptap/react'
