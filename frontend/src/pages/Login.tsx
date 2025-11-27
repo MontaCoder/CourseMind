@@ -8,7 +8,7 @@ import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowRight, Mail, Lock, AlertTriangle } from 'lucide-react';
-import { appName, facebookClientId, serverURL } from '@/constants';
+import { appName, facebookClientId } from '@/constants';
 import Logo from '../res/logo.svg';
 import api, { setAuthData } from '@/lib/api';
 import { GoogleLogin } from '@react-oauth/google';

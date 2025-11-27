@@ -2,23 +2,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Search, MoreVertical, Eye, MailOpen, Reply, Trash } from 'lucide-react';
+import { Search, MoreVertical, Reply } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { serverURL } from '@/constants';
 import api from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
-
-// Sample contacts data
-const contacts = [
-  { id: 1, name: 'John Doe', email: 'john@example.com', subject: 'Course Access Issue', status: 'unread', date: '2023-06-12' },
-  { id: 2, name: 'Jane Smith', email: 'jane@example.com', subject: 'Payment Question', status: 'read', date: '2023-06-11' },
-  { id: 3, name: 'Michael Brown', email: 'michael@example.com', subject: 'Refund Request', status: 'replied', date: '2023-06-10' },
-  { id: 4, name: 'Emily Johnson', email: 'emily@example.com', subject: 'Technical Support', status: 'unread', date: '2023-06-09' },
-  { id: 5, name: 'David Wilson', email: 'david@example.com', subject: 'Account Verification', status: 'read', date: '2023-06-08' },
-];
 
 const AdminContacts = () => {
 
