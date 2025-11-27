@@ -3,11 +3,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Users, BookOpen, Sparkles, ArrowRight, BookPlus, FileQuestion, Loader, MoreVertical, Share, Trash2 } from 'lucide-react';
+import { BookOpen, Sparkles, ArrowRight, BookPlus, FileQuestion, MoreVertical, Share, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Link, useNavigate } from 'react-router-dom';
 import SEO from '@/components/SEO';
-import { appLogo, serverURL, websiteURL } from '@/constants';
+import { appLogo, websiteURL } from '@/constants';
 import api from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';

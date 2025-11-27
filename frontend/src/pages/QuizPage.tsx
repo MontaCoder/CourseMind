@@ -13,8 +13,6 @@ import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import api from '@/lib/api';
-import { serverURL } from '@/constants';
-
 
 enum QuizState {
     NotStarted,
