@@ -41,7 +41,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from '@/hooks/use-toast';
 import { amountInZarOne, amountInZarTwo, appLogo, appName, companyName, flutterwaveEnabled, flutterwavePlanIdOne, flutterwavePlanIdTwo, flutterwavePublicKey, FreeCost, FreeType, MonthCost, MonthType, paypalEnabled, paypalPlanIdOne, paypalPlanIdTwo, paystackEnabled, paystackPlanIdOne, paystackPlanIdTwo, razorpayEnabled, razorpayPlanIdOne, razorpayPlanIdTwo, serverURL, stripeEnabled, stripePlanIdOne, stripePlanIdTwo, YearCost, YearType } from '@/constants';
 import api from '@/lib/api';
-import { useFlutterwave } from 'flutterwave-react-v3';
+
 
 // Form validation schema
 const formSchema = z.object({
@@ -152,17 +152,7 @@ const PaymentDetails = () => {
       startPayPal(data);
     } else if (paymentMethod === 'stripe') {
       startStripe();
-    } else if (paymentMethod === 'flutterwave') {
-      setIsProcessing(false);
-      handleFlutterPayment({
-        callback: (response) => {
-          sessionStorage.setItem('stripe', "" + response.transaction_id);
-          sessionStorage.setItem('method', 'flutterwave');
-          sessionStorage.setItem('plan', plan.name);
-          navigate('/payment-success/' + response.transaction_id);
-        },
-        onClose: () => { },
-      });
+
     } else if (paymentMethod === 'paystack') {
       startPaystack(data);
     } else if (paymentMethod === 'razorpay') {
@@ -235,25 +225,7 @@ const PaymentDetails = () => {
     }
   }
 
-  const config = {
-    public_key: flutterwavePublicKey,
-    tx_ref: Date.now(),
-    currency: 'USD',
-    amount: plan.name === 'Monthly Plan' ? MonthCost : YearCost,
-    payment_options: "card",
-    payment_plan: plan.name === 'Monthly Plan' ? flutterwavePlanIdOne : flutterwavePlanIdTwo,
-    customer: {
-      email: sessionStorage.getItem('email'),
-      name: sessionStorage.getItem('mName'),
-    },
-    customizations: {
-      title: appName,
-      description: plan.name + 'Subscription Payment',
-      logo: appLogo,
-    },
-  };
 
-  const handleFlutterPayment = useFlutterwave(config);
 
   async function startStripe() {
     let planId = stripePlanIdTwo;
@@ -704,7 +676,7 @@ const PaymentDetails = () => {
                     <TabsList className="grid grid-cols-5 mb-6">
                       {paypalEnabled ? <TabsTrigger value="paypal">PayPal</TabsTrigger> : null}
                       {stripeEnabled ? <TabsTrigger value="stripe">Stripe</TabsTrigger> : null}
-                      {flutterwaveEnabled ? <TabsTrigger value="flutterwave">Flutterwave</TabsTrigger> : null}
+
                       {paystackEnabled ? <TabsTrigger value="paystack">Paystack</TabsTrigger> : null}
                       {razorpayEnabled ? <TabsTrigger value="razorpay">Razorpay</TabsTrigger> : null}
                     </TabsList>
@@ -727,14 +699,7 @@ const PaymentDetails = () => {
                       </div>
                     </TabsContent>
 
-                    <TabsContent value="flutterwave">
-                      <div className="flex flex-col items-center justify-center space-y-4 py-8">
-                        <Smartphone className="h-12 w-12 text-orange-500" />
-                        <p className="text-center">
-                          You'll be redirected to Flutterwave to complete your purchase securely.
-                        </p>
-                      </div>
-                    </TabsContent>
+
 
                     <TabsContent value="paystack">
                       <div className="flex flex-col items-center justify-center space-y-4 py-8">
