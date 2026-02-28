@@ -21,7 +21,7 @@
     "@google/generative-ai": "^0.7.1",
     "unsplash-js": "^7.0.18",
     "showdown": "^2.1.0",
-    "axios": "^1.13.5",
+    "axios": "^1.13.6",
     "stripe": "^14.9.0",
     "bcrypt": "^6.0.0",
     "jsonwebtoken": "^9.0.2",
