@@ -475,7 +475,7 @@ app.post('/api/prompt', async (req, res) => {
         },
     ];
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash", safetySettings });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite-preview", safetySettings });
 
     const prompt = promptString;
 
@@ -514,7 +514,7 @@ app.post('/api/generate', async (req, res) => {
         },
     ];
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash", safetySettings });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite-preview", safetySettings });
 
     const prompt = promptString
 
@@ -2231,7 +2231,7 @@ app.post('/api/chat', async (req, res) => {
         },
     ];
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash", safetySettings });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite-preview", safetySettings });
 
     const prompt = promptString;
 
@@ -2394,7 +2394,7 @@ app.post('/api/aiexam', authMiddleware, async (req, res) => {
             },
         ];
 
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash", safetySettings });
+        const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite-preview", safetySettings });
 
         await model.generateContent(prompt).then(async result => {
             const response = result.response;
