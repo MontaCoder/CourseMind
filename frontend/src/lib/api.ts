@@ -1,44 +1,58 @@
-import axios from 'axios';
 import { serverURL } from '@/constants';
 
-// Create axios instance with default config
-const api = axios.create({
-  baseURL: serverURL,
-  withCredentials: true, // Send cookies with requests
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+type ApiResponse<T> = { data: T; status: number };
+type RequestBody = BodyInit | Record<string, unknown> | unknown[] | null | undefined;
+type AuthData = { token: string; userData: { _id: string; email: string; mName: string; type: string } };
+let authHydration: Promise<AuthData | null> | null = null;
+let authGeneration = 0;
 
-// Request interceptor to add JWT token
-api.interceptors.request.use(
-  (config) => {
-    const token = sessionStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+const headers = (body?: RequestBody) => {
+  const token = sessionStorage.getItem('token');
+  const next: HeadersInit = {};
+  if (!(body instanceof FormData)) next['Content-Type'] = 'application/json';
+  if (token) next.Authorization = `Bearer ${token}`;
+  return next;
+};
 
-// Response interceptor to handle auth errors
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Clear session and redirect to login
-      sessionStorage.clear();
-      window.location.href = '/login';
-    }
-    return Promise.reject(error);
+const parseBody = (body?: RequestBody) => {
+  if (!body || body instanceof FormData || typeof body === 'string') return body as BodyInit | undefined;
+  return JSON.stringify(body);
+};
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<ApiResponse<T>> {
+  const response = await fetch(`${serverURL}${path}`, {
+    credentials: 'include',
+    ...init,
+    headers: { ...headers(init.body as RequestBody), ...init.headers },
+  });
+
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+
+  if (response.status === 401) {
+    clearAuthData();
+    window.location.href = '/login';
   }
-);
+  if (!response.ok) {
+    const error = new Error(data?.message || response.statusText);
+    (error as Error & { response?: ApiResponse<T> }).response = { data, status: response.status };
+    throw error;
+  }
+
+  return { data, status: response.status };
+}
+
+const api = {
+  get: <T = unknown>(path: string) => request<T>(path),
+  post: <T = unknown>(path: string, body?: RequestBody) =>
+    request<T>(path, { method: 'POST', body: parseBody(body) }),
+};
 
 export default api;
 
 // Helper to store auth data
-export const setAuthData = (data: { token: string; userData: { _id: string; email: string; mName: string; type: string } }) => {
+export const setAuthData = (data: AuthData) => {
+  authGeneration += 1;
   sessionStorage.setItem('token', data.token);
   sessionStorage.setItem('email', data.userData.email);
   sessionStorage.setItem('mName', data.userData.mName);
@@ -49,12 +63,59 @@ export const setAuthData = (data: { token: string; userData: { _id: string; emai
 
 // Helper to clear auth data
 export const clearAuthData = () => {
+  authGeneration += 1;
+  authHydration = null;
   sessionStorage.clear();
 };
 
 // Helper to check if user is authenticated
 export const isAuthenticated = () => {
   return !!sessionStorage.getItem('token') && !!sessionStorage.getItem('auth');
+};
+
+export const hydrateAuth = async () => {
+  if (isAuthenticated()) {
+    return {
+      token: sessionStorage.getItem('token') || '',
+      userData: {
+        _id: sessionStorage.getItem('uid') || '',
+        email: sessionStorage.getItem('email') || '',
+        mName: sessionStorage.getItem('mName') || '',
+        type: sessionStorage.getItem('type') || '',
+      },
+    };
+  }
+
+  if (!authHydration) {
+    const generation = authGeneration;
+    authHydration = fetch(`${serverURL}/api/me`, { credentials: 'include' })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const data = await response.json() as AuthData & { success?: boolean };
+        if (!data?.token || !data?.userData) return null;
+        if (generation !== authGeneration) return null;
+        setAuthData(data);
+        return { token: data.token, userData: data.userData };
+      })
+      .catch(() => null)
+      .finally(() => {
+        authHydration = null;
+      });
+  }
+
+  return authHydration;
+};
+
+export const logout = async () => {
+  try {
+    await fetch(`${serverURL}/api/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } finally {
+    clearAuthData();
+  }
 };
 
 // Helper to get current user info
