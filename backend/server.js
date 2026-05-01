@@ -1,7 +1,6 @@
 // IMPORT
 import express from 'express';
 import mongoose from 'mongoose';
-import bodyParser from 'body-parser';
 import nodemailer from 'nodemailer';
 import cors from 'cors';
 import crypto from 'crypto';
@@ -14,9 +13,6 @@ import cookieParser from 'cookie-parser';
 import { z } from 'zod';
 import youtubesearchapi from 'youtube-search-api';
 import { YoutubeTranscript } from 'youtube-transcript';
-import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from '@google/generative-ai';
-import { createApi } from 'unsplash-js';
-import showdown from 'showdown';
 import axios from 'axios';
 import Stripe from 'stripe';
 import Flutterwave from 'flutterwave-node-v3';
@@ -41,10 +37,9 @@ app.use(cors({
     credentials: true
 }));
 app.use(cookieParser());
-app.use(bodyParser.json({ limit: '10mb' }));
 app.use(express.json({ limit: '10mb' }));
 
-// Rate limiters - Skip AI endpoints for speed
+// Rate limiters
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 10,
@@ -52,8 +47,12 @@ const authLimiter = rateLimit({
 });
 const generalLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: 100,
-    skip: (req) => req.path.includes('/prompt') || req.path.includes('/generate')
+    max: 100
+});
+const aiLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 20,
+    message: { success: false, message: 'Too many AI/media requests, try again later' }
 });
 app.use('/api/', generalLimiter);
 
@@ -72,9 +71,225 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-// AI and Image services
-const genAI = new GoogleGenerativeAI(process.env.API_KEY);
-const unsplash = createApi({ accessKey: process.env.UNSPLASH_ACCESS_KEY });
+const paragraph = (content) =>
+    `<p style="font-size:14px;line-height:24px;margin:16px 0;color:#000">${content}</p>`;
+
+const emailTemplate = ({ title, body, buttonHref, buttonText, preview = title, logo = process.env.LOGO, company = process.env.COMPANY }) => {
+    const action = buttonHref && buttonText
+        ? `<table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin:32px 0;text-align:center"><tbody><tr><td><a href="${buttonHref}" target="_blank" style="line-height:100%;text-decoration:none;display:inline-block;max-width:100%;padding:12px 20px;border-radius:0.25rem;background-color:#007BFF;text-align:center;font-size:12px;font-weight:600;color:#fff">${buttonText}</a></td></tr></tbody></table>`
+        : '';
+
+    return `<!DOCTYPE html>
+<html lang="en">
+  <head><meta http-equiv="Content-Type" content="text/html charset=UTF-8" /></head>
+  <body style="padding:20px;background-color:#f6f9fc;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif">
+    <div style="display:none;overflow:hidden;line-height:1px;opacity:0;max-height:0;max-width:0">${preview}</div>
+    <table align="center" role="presentation" cellSpacing="0" cellPadding="0" border="0" width="100%" style="max-width:465px;margin:80px auto;border:1px solid #e5e7eb;border-radius:0.25rem;background-color:#fff;padding:20px">
+      <tr><td>
+        <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-top:32px"><tbody><tr><td>
+          <img alt="${company}" src="${logo}" width="40" height="37" style="display:block;outline:none;border:none;text-decoration:none;margin:0 auto" />
+        </td></tr></tbody></table>
+        <h1 style="margin:30px 0;padding:0;text-align:center;font-size:24px;font-weight:400;color:#000">${title}</h1>
+        ${body}
+        ${action}
+        <p style="font-size:14px;line-height:24px;margin:16px 0;color:#000">Best,<br />The <strong>${company}</strong> Team</p>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+};
+
+const sendMail = ({ to, subject, html }) => transporter.sendMail({ from: process.env.EMAIL, to, subject, html });
+
+const sendWelcomeEmail = (email, name) => sendMail({
+    to: email,
+    subject: `Welcome to ${process.env.COMPANY || 'CourseMind'}`,
+    html: emailTemplate({
+        title: 'Welcome',
+        body: paragraph(`${name}, welcome to ${process.env.COMPANY || 'CourseMind'}.`),
+    }),
+});
+
+const sendPasswordUpdatedEmail = (email) => sendMail({
+    to: email,
+    subject: `${process.env.COMPANY || 'CourseMind'} Password Updated`,
+    html: emailTemplate({
+        title: 'Password Updated',
+        body: paragraph('Your password has been updated successfully.'),
+        buttonHref: process.env.WEBSITE_URL,
+        buttonText: 'Sign In',
+    }),
+});
+
+// AI, media, and provider helpers
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'openrouter/free';
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const CACHE_LIMIT = 500;
+const DEFAULT_CACHE_TTL = 30 * 60 * 1000;
+const providerCache = new Map();
+
+const escapeHtml = (text = '') => String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const inlineMarkdown = (text) => escapeHtml(text)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+const markdownToHtml = (markdown = '') => {
+    const lines = String(markdown).split(/\r?\n/);
+    const html = [];
+    let listType = null;
+
+    const closeList = () => {
+        if (listType) html.push(`</${listType}>`);
+        listType = null;
+    };
+
+    lines.forEach((line) => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+            closeList();
+            return;
+        }
+
+        const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
+        if (heading) {
+            closeList();
+            const level = heading[1].length;
+            html.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`);
+            return;
+        }
+
+        const unordered = trimmed.match(/^[-*]\s+(.+)$/);
+        if (unordered) {
+            if (listType !== 'ul') {
+                closeList();
+                listType = 'ul';
+                html.push('<ul>');
+            }
+            html.push(`<li>${inlineMarkdown(unordered[1])}</li>`);
+            return;
+        }
+
+        const ordered = trimmed.match(/^\d+\.\s+(.+)$/);
+        if (ordered) {
+            if (listType !== 'ol') {
+                closeList();
+                listType = 'ol';
+                html.push('<ol>');
+            }
+            html.push(`<li>${inlineMarkdown(ordered[1])}</li>`);
+            return;
+        }
+
+        closeList();
+        html.push(`<p>${inlineMarkdown(trimmed)}</p>`);
+    });
+
+    closeList();
+    return html.join('');
+};
+
+const cacheKey = (...parts) => crypto.createHash('sha256').update(JSON.stringify(parts)).digest('hex');
+const cached = async (key, ttlMs, loader) => {
+    const now = Date.now();
+    const hit = providerCache.get(key);
+    if (hit && hit.expires > now) return hit.value;
+    const value = await loader();
+    providerCache.set(key, { value, expires: now + ttlMs });
+    if (providerCache.size > CACHE_LIMIT) providerCache.delete(providerCache.keys().next().value);
+    return value;
+};
+
+const extractJsonText = (text) => text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+
+const openRouterText = async (prompt, { json = false } = {}) => {
+    if (!process.env.OPENROUTER_API_KEY) {
+        const error = new Error('OPENROUTER_API_KEY is not configured');
+        error.status = 503;
+        throw error;
+    }
+
+    const response = await axios.post(OPENROUTER_URL, {
+        model: OPENROUTER_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        ...(json ? { response_format: { type: 'json_object' } } : {}),
+    }, {
+        headers: {
+            Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': process.env.WEBSITE_URL || 'http://localhost',
+            'X-Title': process.env.COMPANY || 'CourseMind',
+        },
+        timeout: 60000,
+    });
+
+    const text = response.data?.choices?.[0]?.message?.content;
+    if (!text) throw new Error('OpenRouter returned an empty response');
+    return text;
+};
+
+const cachedOpenRouterText = (scope, prompt, options = {}) =>
+    cached(`openrouter:${scope}:${cacheKey(prompt, options)}`, DEFAULT_CACHE_TTL, () => openRouterText(prompt, options));
+
+const defaultCourseImage = () => process.env.DEFAULT_COURSE_IMAGE_URL || process.env.LOGO || '';
+
+const findPexelsPhoto = async (query) => cached(`pexels:${cacheKey(query)}`, 24 * 60 * 60 * 1000, async () => {
+    if (!process.env.PEXELS_API_KEY) return defaultCourseImage();
+
+    try {
+        const response = await axios.get('https://api.pexels.com/v1/search', {
+            params: { query, page: 1, per_page: 1, orientation: 'landscape' },
+            headers: { Authorization: process.env.PEXELS_API_KEY },
+            timeout: 10000,
+        });
+        const photo = response.data?.photos?.[0];
+        return photo?.src?.large2x || photo?.src?.large || photo?.src?.landscape || photo?.src?.original || defaultCourseImage();
+    } catch (error) {
+        console.error('Pexels lookup failed:', error.message);
+        return defaultCourseImage();
+    }
+});
+
+const verifyGoogleCredential = async (credential) => {
+    if (!process.env.GOOGLE_CLIENT_ID) {
+        const error = new Error('GOOGLE_CLIENT_ID is not configured');
+        error.status = 503;
+        throw error;
+    }
+
+    const response = await axios.get('https://oauth2.googleapis.com/tokeninfo', {
+        params: { id_token: credential },
+        timeout: 10000,
+    });
+    const profile = response.data;
+    if (profile.aud !== process.env.GOOGLE_CLIENT_ID || !profile.email) {
+        const error = new Error('Invalid Google credential');
+        error.status = 401;
+        throw error;
+    }
+    return { email: profile.email, name: profile.name || profile.email.split('@')[0] };
+};
+
+const verifyFacebookAccessToken = async (accessToken) => {
+    const response = await axios.get('https://graph.facebook.com/me', {
+        params: { fields: 'id,name,email', access_token: accessToken },
+        timeout: 10000,
+    });
+    const profile = response.data;
+    if (!profile.email) {
+        const error = new Error('Facebook account did not return an email');
+        error.status = 401;
+        throw error;
+    }
+    return { email: profile.email, name: profile.name || profile.email.split('@')[0] };
+};
 
 // Admin cache for fast lookups
 let adminCache = { emails: new Set(), lastUpdate: 0 };
@@ -95,15 +310,9 @@ const authMiddleware = (req, res, next) => {
         req.user = jwt.verify(token, JWT_SECRET);
         next();
     } catch {
+        clearAuthCookie(res);
         return res.status(401).json({ success: false, message: 'Invalid token' });
     }
-};
-
-// Optional auth for public endpoints
-const optionalAuth = (req, res, next) => {
-    const token = req.cookies?.token || req.headers.authorization?.split(' ')[1];
-    if (token) { try { req.user = jwt.verify(token, JWT_SECRET); } catch {} }
-    next();
 };
 
 // Admin Middleware (cached)
@@ -115,21 +324,9 @@ const adminMiddleware = async (req, res, next) => {
     next();
 };
 
-// Verify course ownership
-const verifyCourseOwner = async (req, res, next) => {
-    const courseId = req.body.courseId || req.query.courseId;
-    if (!courseId) return res.status(400).json({ success: false, message: 'Course ID required' });
-    const course = await Course.findById(courseId).select('user').lean();
-    if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
-    if (course.user !== req.user?.userId) {
-        return res.status(403).json({ success: false, message: 'Access denied' });
-    }
-    next();
-};
-
 // Validation schemas
 const schemas = {
-    signup: z.object({ email: z.string().email(), mName: z.string().min(1).max(100), password: z.string().min(6), type: z.string().optional() }),
+    signup: z.object({ email: z.string().email(), mName: z.string().min(1).max(100), password: z.string().min(9), type: z.string().optional() }),
     signin: z.object({ email: z.string().email(), password: z.string().min(1) }),
     prompt: z.object({ prompt: z.string().min(1).max(50000) })
 };
@@ -143,6 +340,7 @@ const validate = (name) => (req, res, next) => {
 // Helpers
 const generateToken = (user) => jwt.sign({ userId: user._id.toString(), email: user.email, type: user.type }, JWT_SECRET, { expiresIn: '7d' });
 const setAuthCookie = (res, token) => res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 7 * 24 * 60 * 60 * 1000 });
+const clearAuthCookie = (res) => res.clearCookie('token', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' });
 const sanitizeUser = (user) => ({ _id: user._id, email: user.email, mName: user.mName, type: user.type });
 
 //SCHEMA
@@ -232,11 +430,144 @@ const ExamSchema = mongoose.model('Exams', examSchema);
 const LangSchema = mongoose.model('Lang', langSchema);
 const BlogSchema = mongoose.model('Blog', blogSchema);
 
+const isValidId = (id) => mongoose.Types.ObjectId.isValid(String(id || ''));
+
+const findOwnedCourse = (courseId, userId) => {
+    if (!isValidId(courseId)) return null;
+    return Course.findOne({ _id: courseId, user: userId });
+};
+
+const requireOwnedCourse = async (req, res, courseId) => {
+    const course = await findOwnedCourse(courseId, req.user?.userId);
+    if (!course) {
+        res.status(404).json({ success: false, message: 'Course not found' });
+        return null;
+    }
+    return course;
+};
+
+const findOwnedSubscription = (req, query = {}) => Subscription.findOne({ ...query, user: req.user?.userId });
+
+const planCost = (plan) => Number(plan === process.env.MONTH_TYPE ? process.env.MONTH_COST : process.env.YEAR_COST) || 0;
+
+const persistSubscription = async ({ userId, subscription, subscriberId, plan, method }) => {
+    const existingSubscription = await Subscription.findOne({ user: userId });
+    const shouldRecordRevenue = !existingSubscription || existingSubscription.active === false;
+    if (existingSubscription) {
+        await Subscription.findOneAndUpdate(
+            { _id: existingSubscription._id },
+            { $set: { subscription, subscriberId, plan, method, active: true } }
+        );
+    } else {
+        await new Subscription({ user: userId, subscription, subscriberId, plan, method }).save();
+    }
+
+    if (shouldRecordRevenue) {
+        await Admin.findOneAndUpdate({ type: 'main' }, { $inc: { total: planCost(plan) / 4 } });
+    }
+
+    await User.findOneAndUpdate({ _id: userId }, { $set: { type: plan } });
+};
+
+const reserveSubscription = ({ userId, subscription, subscriberId, plan, method }) =>
+    Subscription.findOneAndUpdate(
+        { user: userId, subscription },
+        { $set: { subscriberId, plan, method, active: false } },
+        { upsert: true, new: true }
+    );
+
+const cancelOwnedSubscription = async (req, lookup) => {
+    const subscriptionDetails = await findOwnedSubscription(req, lookup);
+    if (!subscriptionDetails) return null;
+
+    const userDetails = await User.findOneAndUpdate(
+        { _id: req.user.userId },
+        { $set: { type: 'free' } },
+        { new: true }
+    );
+    await Subscription.findOneAndDelete({ _id: subscriptionDetails._id });
+    if (userDetails) {
+        await sendCancelEmail(userDetails.email, userDetails.mName, 'Cancelled');
+    }
+    return subscriptionDetails;
+};
+
+const shouldBootstrapAdmin = (isFirstUser, bootstrapToken) => {
+    if (!isFirstUser) return false;
+    if (process.env.NODE_ENV !== 'production') return true;
+    return Boolean(process.env.ADMIN_BOOTSTRAP_TOKEN && bootstrapToken === process.env.ADMIN_BOOTSTRAP_TOKEN);
+};
+
+const paypalAuthHeader = () => {
+    const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
+    const PAYPAL_APP_SECRET_KEY = process.env.PAYPAL_APP_SECRET_KEY;
+    return 'Basic ' + Buffer.from(PAYPAL_CLIENT_ID + ":" + PAYPAL_APP_SECRET_KEY).toString("base64");
+};
+
+const verifyPayPalWebhook = async (req) => {
+    if (!process.env.PAYPAL_WEBHOOK_ID) return process.env.NODE_ENV !== 'production';
+
+    const tokenResponse = await fetch('https://api-m.paypal.com/v1/oauth2/token', {
+        method: 'POST',
+        headers: {
+            Authorization: paypalAuthHeader(),
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({ grant_type: 'client_credentials' }),
+    });
+    const tokenData = await tokenResponse.json();
+    if (!tokenResponse.ok || !tokenData.access_token) return false;
+
+    const verifyResponse = await fetch('https://api-m.paypal.com/v1/notifications/verify-webhook-signature', {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${tokenData.access_token}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            auth_algo: req.get('paypal-auth-algo'),
+            cert_url: req.get('paypal-cert-url'),
+            transmission_id: req.get('paypal-transmission-id'),
+            transmission_sig: req.get('paypal-transmission-sig'),
+            transmission_time: req.get('paypal-transmission-time'),
+            webhook_id: process.env.PAYPAL_WEBHOOK_ID,
+            webhook_event: req.body,
+        }),
+    });
+    const verification = await verifyResponse.json();
+    return verifyResponse.ok && verification.verification_status === 'SUCCESS';
+};
+
 //REQUEST
+
+//CURRENT SESSION
+app.get('/api/me', authMiddleware, async (req, res) => {
+    try {
+        const user = await User.findOne({ _id: req.user.userId });
+        if (!user) {
+            clearAuthCookie(res);
+            return res.status(401).json({ success: false, message: 'Invalid session' });
+        }
+
+        const token = generateToken(user);
+        setAuthCookie(res, token);
+        res.json({ success: true, token, userData: sanitizeUser(user) });
+    } catch (error) {
+        console.error('Session hydration error:', error.message);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+//LOGOUT
+app.post('/api/logout', (req, res) => {
+    clearAuthCookie(res);
+    res.json({ success: true, message: 'Logged out successfully' });
+});
 
 //SIGNUP
 app.post('/api/signup', authLimiter, validate('signup'), async (req, res) => {
     const { email, mName, password, type } = req.validated;
+    const { bootstrapToken } = req.body;
 
     try {
         const existingUser = await User.findOne({ email }).lean();
@@ -246,14 +577,16 @@ app.post('/api/signup', authLimiter, validate('signup'), async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
         const estimate = await User.estimatedDocumentCount();
         const isFirstUser = estimate === 0;
-        const userType = isFirstUser ? 'forever' : (type || 'free');
+        const makeFirstUserAdmin = shouldBootstrapAdmin(isFirstUser, bootstrapToken);
+        const userType = makeFirstUserAdmin ? 'forever' : (type || 'free');
         const newUser = new User({ email, mName, password: hashedPassword, type: userType });
         await newUser.save();
-        if (isFirstUser) {
+        if (makeFirstUserAdmin) {
             const newAdmin = new Admin({ email, mName, type: 'main' });
             await newAdmin.save();
             await refreshAdminCache();
         }
+        sendWelcomeEmail(email, mName).catch(error => console.error('Welcome email failed:', error.message));
         const token = generateToken(newUser);
         setAuthCookie(res, token);
         res.json({ success: true, message: 'Account created successfully', userId: newUser._id, token, userData: sanitizeUser(newUser) });
@@ -300,48 +633,57 @@ app.post('/api/signin', authLimiter, validate('signin'), async (req, res) => {
 });
 //SIGNINSOCIAL
 app.post('/api/social', authLimiter, async (req, res) => {
-    const { email, name } = req.body;
-    if (!email || !name) return res.status(400).json({ success: false, message: 'Email and name required' });
-    
+    const { provider, credential, accessToken, bootstrapToken } = req.body;
+
     try {
+        let profile;
+        if (provider === 'google') {
+            if (!credential) return res.status(400).json({ success: false, message: 'Google credential required' });
+            profile = await verifyGoogleCredential(credential);
+        } else if (provider === 'facebook') {
+            if (!accessToken) return res.status(400).json({ success: false, message: 'Facebook access token required' });
+            profile = await verifyFacebookAccessToken(accessToken);
+        } else {
+            return res.status(400).json({ success: false, message: 'Unsupported social provider' });
+        }
+
+        const email = profile.email;
+        const name = profile.name;
         let user = await User.findOne({ email });
 
         if (!user) {
             const estimate = await User.estimatedDocumentCount();
             const isFirstUser = estimate === 0;
-            user = new User({ email, mName: name, password: '', type: isFirstUser ? 'forever' : 'free' });
+            const makeFirstUserAdmin = shouldBootstrapAdmin(isFirstUser, bootstrapToken);
+            user = new User({ email, mName: name, password: '', type: makeFirstUserAdmin ? 'forever' : 'free' });
             await user.save();
-            
-            if (isFirstUser) {
+
+            if (makeFirstUserAdmin) {
                 const newAdmin = new Admin({ email, mName: name, type: 'main' });
                 await newAdmin.save();
                 await refreshAdminCache();
             }
+            sendWelcomeEmail(email, name).catch(error => console.error('Welcome email failed:', error.message));
         }
-        
+
         const token = generateToken(user);
         setAuthCookie(res, token);
         res.json({ success: true, message: 'SignIn Successful', token, userData: sanitizeUser(user) });
     } catch (error) {
         console.error('Social login error:', error.message);
-        res.status(500).json({ success: false, message: 'Internal Server Error' });
+        res.status(error.status || 500).json({ success: false, message: error.status ? error.message : 'Internal Server Error' });
     }
 });
 //SEND MAIL
-app.post('/api/data', async (req, res) => {
+app.post('/api/data', authMiddleware, adminMiddleware, async (req, res) => {
     const receivedData = req.body;
 
     try {
-        const emailHtml = receivedData.html;
-
-        const options = {
-            from: process.env.EMAIL,
+        const data = await sendMail({
             to: receivedData.to,
             subject: receivedData.subject,
-            html: emailHtml,
-        };
-
-        const data = await transporter.sendMail(options);
+            html: receivedData.html,
+        });
         res.status(200).json(data);
     } catch (error) {
         console.log('Error', error);
@@ -350,8 +692,8 @@ app.post('/api/data', async (req, res) => {
 });
 
 //FOROGT PASSWORD
-app.post('/api/forgot', async (req, res) => {
-    const { email, name, company, logo } = req.body;
+app.post('/api/forgot', authLimiter, async (req, res) => {
+    const { email } = req.body;
 
     try {
         const user = await User.findOne({ email });
@@ -367,48 +709,11 @@ app.post('/api/forgot', async (req, res) => {
 
         const resetLink = `${process.env.WEBSITE_URL}/reset-password/${token}`;
 
-        const mailOptions = {
-            from: process.env.EMAIL,
+        await sendMail({
             to: user.email,
-            subject: `${name} Password Reset`,
-            html: `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-            <meta http-equiv="Content-Type" content="text/html charset=UTF-8" />
-            <html lang="en">
-            
-              <head></head>
-             <div id="__react-email-preview" style="display:none;overflow:hidden;line-height:1px;opacity:0;max-height:0;max-width:0">Password Reset<div> ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿</div>
-             </div>
-            
-                <body style="padding:20px; margin-left:auto;margin-right:auto;margin-top:auto;margin-bottom:auto;background-color:#f6f9fc;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, &quot;Noto Sans&quot;, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;">
-                    <table align="center" role="presentation" cellSpacing="0" cellPadding="0" border="0" height="80%" width="100%" style="max-width:37.5em;max-height:80%; margin-left:auto;margin-right:auto;margin-top:80px;margin-bottom:80px;width:465px;border-radius:0.25rem;border-width:1px;background-color:#fff;padding:20px">
-                  <tr style="width:100%">
-                    <td>
-                      <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-top:32px">
-                        <tbody>
-                          <tr>
-                            <td><img alt="Vercel" src="${logo}" width="40" height="37" style="display:block;outline:none;border:none;text-decoration:none;margin-left:auto;margin-right:auto;margin-top:0px;margin-bottom:0px" /></td>
-                          </tr>
-                        </tbody>
-                      </table>
-                      <h1 style="margin-left:0px;margin-right:0px;margin-top:30px;margin-bottom:30px;padding:0px;text-align:center;font-size:24px;font-weight:400;color:rgb(0,0,0)">Password Reset</h1>
-                      <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">Click on the button below to reset the password for your account ${email}.</p>
-                      <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-bottom:32px;margin-top:32px;text-align:center">
-                        <tbody>
-                          <tr>
-                            <td><a href="${resetLink}" target="_blank" style="p-x:20px;p-y:12px;line-height:100%;text-decoration:none;display:inline-block;max-width:100%;padding:12px 20px;border-radius:0.25rem;background-color: #007BFF;text-align:center;font-size:12px;font-weight:600;color:rgb(255,255,255);text-decoration-line:none"><span></span><span style="p-x:20px;p-y:12px;max-width:100%;display:inline-block;line-height:120%;text-decoration:none;text-transform:none;mso-padding-alt:0px;mso-text-raise:9px"</span><span>Reset</span></a></td>
-                          </tr>
-                        </tbody>
-                      </table>
-                      <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">Best,<p target="_blank" style="color:rgb(0,0,0);text-decoration:none;text-decoration-line:none">The <strong>${company}</strong> Team</p></p>
-                      </td>
-                  </tr>
-                </table>
-              </body>
-            
-            </html>`,
-        };
-
-        await transporter.sendMail(mailOptions);
+            subject: `${process.env.COMPANY || 'CourseMind'} Password Reset`,
+            html: emailTemplate({ title: 'Password Reset', body: paragraph('Click on the button below to reset the password for your account ' + user.email + '.'), buttonHref: resetLink, buttonText: 'Reset' }),
+        });
 
         res.json({ success: true, message: 'Password reset link sent to your email' });
     } catch (error) {
@@ -418,12 +723,12 @@ app.post('/api/forgot', async (req, res) => {
 });
 
 //FOROGT PASSWORD
-app.post('/api/reset-password', async (req, res) => {
+app.post('/api/reset-password', authLimiter, async (req, res) => {
     const { password, token } = req.body;
 
     try {
-        if (!password || password.length < 6) {
-            return res.json({ success: false, message: 'Password must be at least 6 characters' });
+        if (!password || password.length < 9) {
+            return res.json({ success: false, message: 'Password must be at least 9 characters' });
         }
 
         const user = await User.findOne({
@@ -441,6 +746,7 @@ app.post('/api/reset-password', async (req, res) => {
         user.resetPasswordExpires = null;
 
         await user.save();
+        sendPasswordUpdatedEmail(user.email).catch(error => console.error('Password update email failed:', error.message));
 
         res.json({ success: true, message: 'Password updated successfully', email: user.email });
 
@@ -451,107 +757,34 @@ app.post('/api/reset-password', async (req, res) => {
 });
 
 //GET DATA FROM MODEL
-app.post('/api/prompt', async (req, res) => {
-    const receivedData = req.body;
-
-    const promptString = receivedData.prompt;
-
-    const safetySettings = [
-        {
-            category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-        {
-            category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-        {
-            category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-        {
-            category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-    ];
-
-    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite-preview", safetySettings });
-
-    const prompt = promptString;
-
-    await model.generateContent(prompt).then(result => {
-        const response = result.response;
-        const generatedText = response.text();
+app.post('/api/prompt', authMiddleware, aiLimiter, validate('prompt'), async (req, res) => {
+    try {
+        const generatedText = await cachedOpenRouterText('prompt', req.validated.prompt, { json: true });
         res.status(200).json({ generatedText });
-    }).catch(error => {
+    } catch (error) {
         console.log(error);
-        res.status(500).json({ success: false, message: 'Internal server error' });
-    })
+        res.status(error.status || 500).json({ success: false, message: error.status ? error.message : 'Internal server error' });
+    }
 });
 
 //GET GENERATE THEORY
-app.post('/api/generate', async (req, res) => {
-    const receivedData = req.body;
-
-    const promptString = receivedData.prompt;
-
-    const safetySettings = [
-        {
-            category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-        {
-            category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-        {
-            category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-        {
-            category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-    ];
-
-    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite-preview", safetySettings });
-
-    const prompt = promptString
-
-    await model.generateContent(prompt).then(result => {
-        const response = result.response;
-        const txt = response.text();
-        const converter = new showdown.Converter();
-        const markdownText = txt;
-        const text = converter.makeHtml(markdownText);
+app.post('/api/generate', authMiddleware, aiLimiter, validate('prompt'), async (req, res) => {
+    try {
+        const markdownText = await cachedOpenRouterText('generate', req.validated.prompt);
+        const text = markdownToHtml(markdownText);
         res.status(200).json({ text });
-    }).catch(error => {
+    } catch (error) {
         console.log('Error', error);
-        res.status(500).json({ success: false, message: 'Internal server error' });
-    })
-
+        res.status(error.status || 500).json({ success: false, message: error.status ? error.message : 'Internal server error' });
+    }
 });
 
 //GET IMAGE
-app.post('/api/image', async (req, res) => {
+app.post('/api/image', authMiddleware, aiLimiter, validate('prompt'), async (req, res) => {
     try {
-        const receivedData = req.body;
-        const promptString = receivedData.prompt;
-        
-        // Using Unsplash instead of deprecated g-i-s
-        const result = await unsplash.search.getPhotos({
-            query: promptString,
-            page: 1,
-            perPage: 1,
-            orientation: 'landscape',
-        });
-        
-        if (result.response && result.response.results.length > 0) {
-            const url = result.response.results[0].urls.regular;
-            res.status(200).json({ url });
-        } else {
-            res.status(404).json({ success: false, message: 'No images found' });
-        }
+        const url = await findPexelsPhoto(req.validated.prompt);
+        if (!url) return res.status(503).json({ success: false, message: 'Image provider unavailable' });
+        res.status(200).json({ url });
     } catch (error) {
         console.log('Error', error);
         res.status(500).json({ success: false, message: 'Internal server error' });
@@ -559,13 +792,13 @@ app.post('/api/image', async (req, res) => {
 })
 
 //GET VIDEO 
-app.post('/api/yt', async (req, res) => {
+app.post('/api/yt', authMiddleware, aiLimiter, validate('prompt'), async (req, res) => {
     try {
-
-        const receivedData = req.body;
-        const promptString = receivedData.prompt;
-        const video = await youtubesearchapi.GetListByKeyword(promptString, [false], [1], [{ type: 'video' }])
-        const videoId = await video.items[0].id;
+        const videoId = await cached(`yt:${cacheKey(req.validated.prompt)}`, DEFAULT_CACHE_TTL, async () => {
+            const video = await youtubesearchapi.GetListByKeyword(req.validated.prompt, [false], [1], [{ type: 'video' }]);
+            return video.items?.[0]?.id;
+        });
+        if (!videoId) return res.status(404).json({ success: false, message: 'No videos found' });
         res.status(200).json({ url: videoId });
 
     } catch (error) {
@@ -575,10 +808,8 @@ app.post('/api/yt', async (req, res) => {
 });
 
 //GET TRANSCRIPT 
-app.post('/api/transcript', async (req, res) => {
-    const receivedData = req.body;
-    const promptString = receivedData.prompt;
-    YoutubeTranscript.fetchTranscript(promptString).then(video => {
+app.post('/api/transcript', authMiddleware, aiLimiter, validate('prompt'), async (req, res) => {
+    cached(`transcript:${cacheKey(req.validated.prompt)}`, DEFAULT_CACHE_TTL, () => YoutubeTranscript.fetchTranscript(req.validated.prompt)).then(video => {
         res.status(200).json({ url: video });
     }).catch(error => {
         console.log('Error', error);
@@ -588,62 +819,45 @@ app.post('/api/transcript', async (req, res) => {
 
 //STORE COURSE
 app.post('/api/course', authMiddleware, async (req, res) => {
-    const { user, content, type, mainTopic, lang } = req.body;
+    const { content, type, mainTopic, lang } = req.body;
 
-    unsplash.search.getPhotos({
-        query: mainTopic,
-        page: 1,
-        perPage: 1,
-        orientation: 'landscape',
-    }).then(async (result) => {
-        const photos = result.response.results;
-        const photo = photos[0].urls.regular
-        try {
-            const newCourse = new Course({ user, content, type, mainTopic, photo });
-            await newCourse.save();
-            const newLang = new LangSchema({ course: newCourse._id, lang: lang });
-            await newLang.save();
-            res.json({ success: true, message: 'Course created successfully', courseId: newCourse._id });
-        } catch (error) {
-            console.log('Error', error);
-            res.status(500).json({ success: false, message: 'Internal server error' });
-        }
-    }).catch(error => {
+    try {
+        const photo = await findPexelsPhoto(mainTopic);
+        const newCourse = new Course({ user: req.user.userId, content, type, mainTopic, photo });
+        await newCourse.save();
+        const newLang = new LangSchema({ course: newCourse._id, lang: lang });
+        await newLang.save();
+        res.json({ success: true, message: 'Course created successfully', courseId: newCourse._id, completed: newCourse.completed });
+    } catch (error) {
         console.log('Error', error);
         res.status(500).json({ success: false, message: 'Internal server error' });
-    })
+    }
 });
 
 //STORE COURSE SHARED
-app.post('/api/courseshared', async (req, res) => {
-    const { user, content, type, mainTopic } = req.body;
+app.post('/api/courseshared', authMiddleware, async (req, res) => {
+    const { content, type, mainTopic } = req.body;
 
-    unsplash.search.getPhotos({
-        query: mainTopic,
-        page: 1,
-        perPage: 1,
-        orientation: 'landscape',
-    }).then(async (result) => {
-        const photos = result.response.results;
-        const photo = photos[0].urls.regular
-        try {
-            const newCourse = new Course({ user, content, type, mainTopic, photo });
-            await newCourse.save();
-            res.json({ success: true, message: 'Course created successfully', courseId: newCourse._id });
-        } catch (error) {
-            console.log('Error', error);
-            res.status(500).json({ success: false, message: 'Internal server error' });
-        }
-    })
+    try {
+        const photo = await findPexelsPhoto(mainTopic);
+        const newCourse = new Course({ user: req.user.userId, content, type, mainTopic, photo });
+        await newCourse.save();
+        res.json({ success: true, message: 'Course created successfully', courseId: newCourse._id });
+    } catch (error) {
+        console.log('Error', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
 });
 
 //UPDATE COURSE
 app.post('/api/update', authMiddleware, async (req, res) => {
     const { content, courseId } = req.body;
     try {
+        const course = await requireOwnedCourse(req, res, courseId);
+        if (!course) return;
 
         await Course.findOneAndUpdate(
-            { _id: courseId },
+            { _id: course._id },
             [{ $set: { content: content } }]
         ).then(result => {
             res.json({ success: true, message: 'Course updated successfully' });
@@ -661,7 +875,12 @@ app.post('/api/update', authMiddleware, async (req, res) => {
 app.post('/api/deletecourse', authMiddleware, async (req, res) => {
     const { courseId } = req.body;
     try {
-        await Course.findOneAndDelete({ _id: courseId });
+        const course = await requireOwnedCourse(req, res, courseId);
+        if (!course) return;
+        await Course.findOneAndDelete({ _id: course._id });
+        await NotesSchema.deleteMany({ course: String(course._id) });
+        await ExamSchema.deleteMany({ course: String(course._id) });
+        await LangSchema.deleteMany({ course: String(course._id) });
         res.json({ success: true, message: 'Course deleted successfully' });
     } catch (error) {
         console.log(error);
@@ -672,9 +891,11 @@ app.post('/api/deletecourse', authMiddleware, async (req, res) => {
 app.post('/api/finish', authMiddleware, async (req, res) => {
     const { courseId } = req.body;
     try {
+        const course = await requireOwnedCourse(req, res, courseId);
+        if (!course) return;
 
         await Course.findOneAndUpdate(
-            { _id: courseId },
+            { _id: course._id },
             { $set: { completed: true, end: Date.now() } }
         ).then(result => {
             res.json({ success: true, message: 'Course completed successfully' });
@@ -691,43 +912,30 @@ app.post('/api/finish', authMiddleware, async (req, res) => {
 });
 
 //SEND CERTIFICATE
-app.post('/api/sendcertificate', async (req, res) => {
-    const { html, email } = req.body;
+app.post('/api/sendcertificate', authMiddleware, async (req, res) => {
+    const { html, courseId } = req.body;
 
-    const transporter = nodemailer.createTransport({
-        host: 'smtp.gmail.com',
-        port: 465,
-        service: 'gmail',
-        secure: true,
-        auth: {
-            user: process.env.EMAIL,
-            pass: process.env.PASSWORD,
-        },
-    });
-
-    const options = {
-        from: process.env.EMAIL,
-        to: email,
-        subject: 'Certification of completion',
-        html: html
-    };
-
-    transporter.sendMail(options, (error, info) => {
-        if (error) {
-            res.status(500).json({ success: false, message: 'Failed to send email' });
-        } else {
-            res.json({ success: true, message: 'Email sent successfully' });
-        }
-    });
+    try {
+        const course = await requireOwnedCourse(req, res, courseId);
+        if (!course) return;
+        await sendMail({
+            to: req.user.email,
+            subject: 'Certification of completion',
+            html,
+        });
+        res.json({ success: true, message: 'Email sent successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to send email' });
+    }
 });
 
 // Backend: Modify API to handle pagination
 app.get('/api/courses', authMiddleware, async (req, res) => {
     try {
-        const { userId, page = 1, limit = 9 } = req.query;
+        const { page = 1, limit = 9 } = req.query;
         const skip = (page - 1) * limit;
 
-        const courses = await Course.find({ user: userId })
+        const courses = await Course.find({ user: req.user.userId })
             .skip(parseInt(skip))
             .limit(parseInt(limit));
 
@@ -742,6 +950,7 @@ app.get('/api/courses', authMiddleware, async (req, res) => {
 app.get('/api/shareable', async (req, res) => {
     try {
         const { id } = req.query;
+        if (!isValidId(id)) return res.json([]);
         await Course.find({ _id: id }).then((result) => {
             res.json(result);
         });
@@ -753,30 +962,32 @@ app.get('/api/shareable', async (req, res) => {
 
 //GET PROFILE DETAILS
 app.post('/api/profile', authMiddleware, async (req, res) => {
-    const { email, mName, password, uid } = req.body;
-    
-    // Verify user can only update their own profile
-    if (uid !== req.user?.userId) {
-        return res.status(403).json({ success: false, message: 'Access denied' });
-    }
-    
+    const { email, mName, password } = req.body;
+
     try {
+        if (email && email !== req.user.email) {
+            const existingUser = await User.findOne({ email, _id: { $ne: req.user.userId } }).lean();
+            if (existingUser) return res.json({ success: false, message: 'User with this email already exists' });
+        }
         const updateData = { email, mName };
         
         // Hash password if provided
         if (password && password.length > 0) {
-            if (password.length < 6) {
-                return res.json({ success: false, message: 'Password must be at least 6 characters' });
+            if (password.length < 9) {
+                return res.json({ success: false, message: 'Password must be at least 9 characters' });
             }
             updateData.password = await bcrypt.hash(password, SALT_ROUNDS);
         }
 
-        await User.findOneAndUpdate(
-            { _id: uid },
-            { $set: updateData }
+        const updatedUser = await User.findOneAndUpdate(
+            { _id: req.user.userId },
+            { $set: updateData },
+            { new: true }
         );
-        
-        res.json({ success: true, message: 'Profile Updated' });
+
+        const token = generateToken(updatedUser);
+        setAuthCookie(res, token);
+        res.json({ success: true, message: 'Profile Updated', token, userData: sanitizeUser(updatedUser) });
     } catch (error) {
         console.error('Profile update error:', error.message);
         res.status(500).json({ success: false, message: 'Internal server error' });
@@ -784,8 +995,8 @@ app.post('/api/profile', authMiddleware, async (req, res) => {
 });
 
 //PAYPAL PAYMENT
-app.post('/api/paypal', async (req, res) => {
-    const { planId, email, name, lastName, post, address, country, brand, admin } = req.body;
+app.post('/api/paypal', authMiddleware, async (req, res) => {
+    const { planId, planName, name, lastName, post, address, country, brand, admin } = req.body;
     try {
         const firstLine = address.split(',').slice(0, -1).join(',');
         const secondLine = address.split(',').pop();
@@ -796,7 +1007,7 @@ app.post('/api/paypal', async (req, res) => {
         const setSubscriptionPayload = (subscriptionPlanID) => {
             let subscriptionPayload = {
                 "plan_id": subscriptionPlanID,
-                "subscriber": { "name": { "given_name": name, "surname": lastName }, "email_address": email, "shipping_address": { "name": { "full_name": name }, "address": { "address_line_1": firstLine, "address_line_2": secondLine, "admin_area_2": admin, "admin_area_1": country, "postal_code": post, "country_code": country } } },
+                "subscriber": { "name": { "given_name": name, "surname": lastName }, "email_address": req.user.email, "shipping_address": { "name": { "full_name": name }, "address": { "address_line_1": firstLine, "address_line_2": secondLine, "admin_area_2": admin, "admin_area_1": country, "postal_code": post, "country_code": country } } },
                 "application_context": {
                     "brand_name": process.env.COMPANY,
                     "locale": "en-US",
@@ -824,6 +1035,15 @@ app.post('/api/paypal', async (req, res) => {
             },
         });
         const session = await response.json();
+        if (response.ok && session.id) {
+            await reserveSubscription({
+                userId: req.user.userId,
+                subscription: session.id,
+                subscriberId: req.user.email,
+                plan: planName || planId,
+                method: 'paypal',
+            });
+        }
         res.send(session)
     } catch (error) {
         console.log('Error', error);
@@ -831,12 +1051,11 @@ app.post('/api/paypal', async (req, res) => {
 });
 
 //GET SUBSCRIPTION DETAILS
-app.post('/api/subscriptiondetail', async (req, res) => {
+app.post('/api/subscriptiondetail', authMiddleware, async (req, res) => {
 
     try {
-        const { uid, email } = req.body;
-
-        const userDetails = await Subscription.findOne({ user: uid });
+        const userDetails = await findOwnedSubscription(req);
+        if (!userDetails) return res.status(404).json({ success: false, message: 'Subscription not found' });
         if (userDetails.method === 'stripe') {
             const subscription = await stripe.subscriptions.retrieve(
                 userDetails.subscriberId
@@ -858,7 +1077,7 @@ app.post('/api/subscriptiondetail', async (req, res) => {
             res.json({ session: session, method: userDetails.method });
         }
         else if (userDetails.method === 'flutterwave') {
-            const payload = { "email": email };
+            const payload = { "email": req.user.email };
             const response = await flw.Subscription.get(payload);
             res.json({ session: response['data'][0], method: userDetails.method });
         }
@@ -913,27 +1132,11 @@ app.post('/api/subscriptiondetail', async (req, res) => {
 });
 
 //GET PAYPAL DETAILS
-app.post('/api/paypaldetails', async (req, res) => {
+app.post('/api/paypaldetails', authMiddleware, async (req, res) => {
 
-    const { subscriberId, uid, plan } = req.body;
+    const { subscriberId, plan } = req.body;
 
-    let cost = 0;
-    if (plan === process.env.MONTH_TYPE) {
-        cost = process.env.MONTH_COST
-    } else {
-        cost = process.env.YEAR_COST
-    }
-    cost = cost / 4;
-
-    await Admin.findOneAndUpdate(
-        { type: 'main' },
-        { $inc: { total: cost } }
-    );
-
-    await User.findOneAndUpdate(
-        { _id: uid },
-        { $set: { type: plan } }
-    ).then(async result => {
+    try {
         const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
         const PAYPAL_APP_SECRET_KEY = process.env.PAYPAL_APP_SECRET_KEY;
         const auth = Buffer.from(PAYPAL_CLIENT_ID + ":" + PAYPAL_APP_SECRET_KEY).toString("base64");
@@ -945,91 +1148,62 @@ app.post('/api/paypaldetails', async (req, res) => {
             }
         });
         const session = await response.json();
+        if (!response.ok) return res.status(400).send(session);
+        const ownedPending = await findOwnedSubscription(req, { subscription: subscriberId });
+        const providerEmail = session.subscriber?.email_address;
+        if (!ownedPending && providerEmail && providerEmail !== req.user.email) {
+            return res.status(403).json({ success: false, message: 'Subscription does not belong to this user' });
+        }
+        await persistSubscription({ userId: req.user.userId, subscription: session.id || subscriberId, subscriberId: req.user.email, plan, method: 'paypal' });
         res.send(session);
-    }).catch(error => {
+    } catch (error) {
         console.log('Error', error);
         res.status(500).json({ success: false, message: 'Internal server error' });
-    })
+    }
 
 });
 
 //DOWNLOAD RECEIPT
-app.post('/api/downloadreceipt', async (req, res) => {
-    const { html, email } = req.body;
+app.post('/api/downloadreceipt', authMiddleware, async (req, res) => {
+    const { html } = req.body;
 
-    const transporter = nodemailer.createTransport({
-        host: 'smtp.gmail.com',
-        port: 465,
-        service: 'gmail',
-        secure: true,
-        auth: {
-            user: process.env.EMAIL,
-            pass: process.env.PASSWORD,
-        },
-    });
-
-    const options = {
-        from: process.env.EMAIL,
-        to: email,
-        subject: 'Subscription Receipt',
-        html: html
-    };
-
-    transporter.sendMail(options, (error, info) => {
-        if (error) {
-            console.log('Error', error);
-            res.status(500).json({ success: false, message: 'Failed to send receipt' });
-        } else {
-            res.json({ success: true, message: 'Receipt sent to your mail' });
-        }
-    });
+    try {
+        await sendMail({ to: req.user.email, subject: 'Subscription Receipt', html });
+        res.json({ success: true, message: 'Receipt sent to your mail' });
+    } catch (error) {
+        console.log('Error', error);
+        res.status(500).json({ success: false, message: 'Failed to send receipt' });
+    }
 
 });
 
 //SEND RECEIPT
-app.post('/api/sendreceipt', async (req, res) => {
-    const { html, email, plan, subscriberId, user, method, subscription } = req.body;
-    console.log(subscriberId, subscription);
-    const existingSubscription = await Subscription.findOne({ user: user });
-    if (existingSubscription) {
-        //DO NOTHING
-    } else {
-        const newSub = new Subscription({ user, subscription, subscriberId, plan, method });
-        await newSub.save();
-        console.log(newSub);
-    }
+app.post('/api/sendreceipt', authMiddleware, async (req, res) => {
+    const { html, plan, subscriberId, method, subscription } = req.body;
 
-    const transporter = nodemailer.createTransport({
-        host: 'smtp.gmail.com',
-        port: 465,
-        service: 'gmail',
-        secure: true,
-        auth: {
-            user: process.env.EMAIL,
-            pass: process.env.PASSWORD,
-        },
-    });
-
-    const options = {
-        from: process.env.EMAIL,
-        to: email,
-        subject: 'Subscription Payment',
-        html: html
-    };
-
-    transporter.sendMail(options, (error, info) => {
-        if (error) {
-            console.log('Error', error);
-            res.status(500).json({ success: false, message: 'Failed to send receipt' });
-        } else {
-            res.json({ success: true, message: 'Receipt sent to your mail' });
+    try {
+        const existingSubscription = await findOwnedSubscription(req);
+        if (!existingSubscription) {
+            await persistSubscription({ userId: req.user.userId, subscription, subscriberId, plan, method });
         }
-    });
+        await sendMail({ to: req.user.email, subject: 'Subscription Payment', html });
+        res.json({ success: true, message: 'Receipt sent to your mail' });
+    } catch (error) {
+        console.log('Error', error);
+        res.status(500).json({ success: false, message: 'Failed to send receipt' });
+    }
 });
 
 
 //PAYPAL WEBHOOKS
 app.post('/api/paypalwebhooks', async (req, res) => {
+    try {
+        const verified = await verifyPayPalWebhook(req);
+        if (!verified) return res.status(401).json({ success: false, message: 'Invalid PayPal webhook signature' });
+    } catch (error) {
+        console.log('PayPal webhook verification error:', error.message);
+        return res.status(401).json({ success: false, message: 'Invalid PayPal webhook signature' });
+    }
 
     const body = req.body;
     const event_type = body.event_type;
@@ -1060,14 +1234,17 @@ app.post('/api/paypalwebhooks', async (req, res) => {
         //DO NOTHING
     }
 
+    res.sendStatus(200);
 });
 
 //SEND RENEW EMAIL
 async function sendRenewEmail(id) {
     try {
         const subscriptionDetails = await Subscription.findOne({ subscription: id });
+        if (!subscriptionDetails) return;
         const userId = subscriptionDetails.user;
         const userDetails = await User.findOne({ _id: userId });
+        if (!userDetails) return;
 
         const transporter = nodemailer.createTransport({
             host: 'smtp.gmail.com',
@@ -1084,36 +1261,7 @@ async function sendRenewEmail(id) {
             from: process.env.EMAIL,
             to: userDetails.email,
             subject: `${userDetails.mName} Your Subscription Plan Has Been Renewed`,
-            html: `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-            <meta http-equiv="Content-Type" content="text/html charset=UTF-8" />
-            <html lang="en">
-            
-              <head></head>
-             <div id="__react-email-preview" style="display:none;overflow:hidden;line-height:1px;opacity:0;max-height:0;max-width:0">Subscription Renewed<div> ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿</div>
-             </div>
-            
-             <body style="padding:20px; margin-left:auto;margin-right:auto;margin-top:auto;margin-bottom:auto;background-color:#f6f9fc;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, &quot;Noto Sans&quot;, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;">
-                    <table align="center" role="presentation" cellSpacing="0" cellPadding="0" border="0" height="80%" width="100%" style="max-width:37.5em;max-height:80%; margin-left:auto;margin-right:auto;margin-top:80px;margin-bottom:80px;width:465px;border-radius:0.25rem;border-width:1px;background-color:#fff;padding:20px">
-                  <tr style="width:100%">
-                    <td>
-                      <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-top:32px">
-                        <tbody>
-                          <tr>
-                            <td><img alt="Vercel" src="${process.env.LOGO}" width="40" height="37" style="display:block;outline:none;border:none;text-decoration:none;margin-left:auto;margin-right:auto;margin-top:0px;margin-bottom:0px" /></td>
-                          </tr>
-                        </tbody>
-                      </table>
-                      <h1 style="margin-left:0px;margin-right:0px;margin-top:30px;margin-bottom:30px;padding:0px;text-align:center;font-size:24px;font-weight:400;color:rgb(0,0,0)">Subscription Renewed</h1>
-                      <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">${userDetails.mName}, your subscription plan has been Renewed.</p>
-                      <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-bottom:32px;margin-top:32px;text-align:center">
-                      </table>
-                      <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">Best,<p target="_blank" style="color:rgb(0,0,0);text-decoration:none;text-decoration-line:none">The <strong>${process.env.COMPANY}</strong> Team</p></p>
-                      </td>
-                  </tr>
-                </table>
-              </body>
-            
-            </html>`,
+            html: emailTemplate({ title: 'Subscription Renewed', body: paragraph(userDetails.mName + ', your subscription plan has been Renewed.') }),
         };
 
         await transporter.sendMail(mailOptions);
@@ -1126,6 +1274,7 @@ async function sendRenewEmail(id) {
 async function updateSubsciption(id, subject) {
     try {
         const subscriptionDetails = await Subscription.findOne({ subscription: id });
+        if (!subscriptionDetails) return;
         const userId = subscriptionDetails.user;
 
         await User.findOneAndUpdate(
@@ -1134,6 +1283,7 @@ async function updateSubsciption(id, subject) {
         );
 
         const userDetails = await User.findOne({ _id: userId });
+        if (!userDetails) return;
         await Subscription.findOneAndDelete({ subscription: id });
 
         sendCancelEmail(userDetails.email, userDetails.mName, subject);
@@ -1162,41 +1312,7 @@ async function sendCancelEmail(email, name, subject) {
         from: process.env.EMAIL,
         to: email,
         subject: `${name} Your Subscription Plan Has Been ${subject}`,
-        html: `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-        <meta http-equiv="Content-Type" content="text/html charset=UTF-8" />
-        <html lang="en">
-        
-          <head></head>
-         <div id="__react-email-preview" style="display:none;overflow:hidden;line-height:1px;opacity:0;max-height:0;max-width:0">Subscription ${subject}<div> ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿</div>
-         </div>
-        
-<body style="padding:20px; margin-left:auto;margin-right:auto;margin-top:auto;margin-bottom:auto;background-color:#f6f9fc;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, &quot;Noto Sans&quot;, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;">
-                    <table align="center" role="presentation" cellSpacing="0" cellPadding="0" border="0" height="80%" width="100%" style="max-width:37.5em;max-height:80%; margin-left:auto;margin-right:auto;margin-top:80px;margin-bottom:80px;width:465px;border-radius:0.25rem;border-width:1px;background-color:#fff;padding:20px">
-              <tr style="width:100%">
-                <td>
-                  <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-top:32px">
-                    <tbody>
-                      <tr>
-                        <td><img alt="Vercel" src="${process.env.LOGO}" width="40" height="37" style="display:block;outline:none;border:none;text-decoration:none;margin-left:auto;margin-right:auto;margin-top:0px;margin-bottom:0px" /></td>
-                      </tr>
-                    </tbody>
-                  </table>
-                  <h1 style="margin-left:0px;margin-right:0px;margin-top:30px;margin-bottom:30px;padding:0px;text-align:center;font-size:24px;font-weight:400;color:rgb(0,0,0)">Subscription ${subject}</h1>
-                  <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">${name}, your subscription plan has been ${subject}. Reactivate your plan by clicking on the button below.</p>
-                  <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-bottom:32px;margin-top:32px;text-align:center">
-                       <tbody>
-                          <tr>
-                            <td><a href="${Reactivate}" target="_blank" style="p-x:20px;p-y:12px;line-height:100%;text-decoration:none;display:inline-block;max-width:100%;padding:12px 20px;border-radius:0.25rem;background-color: #007BFF;text-align:center;font-size:12px;font-weight:600;color:rgb(255,255,255);text-decoration-line:none"><span></span><span style="p-x:20px;p-y:12px;max-width:100%;display:inline-block;line-height:120%;text-decoration:none;text-transform:none;mso-padding-alt:0px;mso-text-raise:9px"</span><span>Reactivate</span></a></td>
-                          </tr>
-                        </tbody>
-                  </table>
-                  <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">Best,<p target="_blank" style="color:rgb(0,0,0);text-decoration:none;text-decoration-line:none">The <strong>${process.env.COMPANY}</strong> Team</p></p>
-                  </td>
-              </tr>
-            </table>
-          </body>
-        
-        </html>`,
+        html: emailTemplate({ title: 'Subscription ' + subject, body: paragraph(name + ', your subscription plan has been ' + subject + '. Reactivate your plan by clicking on the button below.'), buttonHref: Reactivate, buttonText: 'Reactivate' }),
     };
 
     await transporter.sendMail(mailOptions);
@@ -1204,101 +1320,42 @@ async function sendCancelEmail(email, name, subject) {
 }
 
 //CANCEL PAYPAL SUBSCRIPTION
-app.post('/api/paypalcancel', async (req, res) => {
-    const { id, email } = req.body;
+app.post('/api/paypalcancel', authMiddleware, async (req, res) => {
+    const { id } = req.body;
 
     const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
     const PAYPAL_APP_SECRET_KEY = process.env.PAYPAL_APP_SECRET_KEY;
     const auth = Buffer.from(PAYPAL_CLIENT_ID + ":" + PAYPAL_APP_SECRET_KEY).toString("base64");
-    await fetch(`https://api-m.paypal.com/v1/billing/subscriptions/${id}/cancel`, {
-        method: 'POST',
-        headers: {
-            'Authorization': 'Basic ' + auth,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify({ "reason": "Not satisfied with the service" })
+    try {
+        const subscriptionDetails = await findOwnedSubscription(req, { subscription: id });
+        if (!subscriptionDetails) return res.status(404).json({ success: false, message: 'Subscription not found' });
 
-    }).then(async resp => {
-        try {
-            const subscriptionDetails = await Subscription.findOne({ subscriberId: email });
-            const userId = subscriptionDetails.user;
+        const response = await fetch(`https://api-m.paypal.com/v1/billing/subscriptions/${id}/cancel`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Basic ' + auth,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ "reason": "Not satisfied with the service" })
 
-            await User.findOneAndUpdate(
-                { _id: userId },
-                { $set: { type: 'free' } }
-            );
+        });
+        if (!response.ok) return res.status(400).json({ success: false, message: 'Unable to cancel subscription' });
 
-            const userDetails = await User.findOne({ _id: userId });
-            await Subscription.findOneAndDelete({ subscription: id });
-
-            const transporter = nodemailer.createTransport({
-                host: 'smtp.gmail.com',
-                port: 465,
-                service: 'gmail',
-                secure: true,
-                auth: {
-                    user: process.env.EMAIL,
-                    pass: process.env.PASSWORD,
-                },
-            });
-
-            const Reactivate = process.env.WEBSITE_URL + "/pricing";
-
-            const mailOptions = {
-                from: process.env.EMAIL,
-                to: userDetails.email,
-                subject: `${userDetails.mName} Your Subscription Plan Has Been Cancelled`,
-                html: `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-                <meta http-equiv="Content-Type" content="text/html charset=UTF-8" />
-                <html lang="en">
-                
-                  <head></head>
-                 <div id="__react-email-preview" style="display:none;overflow:hidden;line-height:1px;opacity:0;max-height:0;max-width:0">Subscription Cancelled<div> ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿</div>
-                 </div>
-                
-<body style="padding:20px; margin-left:auto;margin-right:auto;margin-top:auto;margin-bottom:auto;background-color:#f6f9fc;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, &quot;Noto Sans&quot;, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;">
-                    <table align="center" role="presentation" cellSpacing="0" cellPadding="0" border="0" height="80%" width="100%" style="max-width:37.5em;max-height:80%; margin-left:auto;margin-right:auto;margin-top:80px;margin-bottom:80px;width:465px;border-radius:0.25rem;border-width:1px;background-color:#fff;padding:20px">
-                      <tr style="width:100%">
-                        <td>
-                          <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-top:32px">
-                            <tbody>
-                              <tr>
-                                <td><img alt="Vercel" src="${process.env.LOGO}" width="40" height="37" style="display:block;outline:none;border:none;text-decoration:none;margin-left:auto;margin-right:auto;margin-top:0px;margin-bottom:0px" /></td>
-                              </tr>
-                            </tbody>
-                          </table>
-                          <h1 style="margin-left:0px;margin-right:0px;margin-top:30px;margin-bottom:30px;padding:0px;text-align:center;font-size:24px;font-weight:400;color:rgb(0,0,0)">Subscription Cancelled</h1>
-                          <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">${userDetails.mName}, your subscription plan has been Cancelled. Reactivate your plan by clicking on the button below.</p>
-                          <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-bottom:32px;margin-top:32px;text-align:center">
-                               <tbody>
-                                  <tr>
-                                    <td><a href="${Reactivate}" target="_blank" style="p-x:20px;p-y:12px;line-height:100%;text-decoration:none;display:inline-block;max-width:100%;padding:12px 20px;border-radius:0.25rem;background-color: #007BFF;text-align:center;font-size:12px;font-weight:600;color:rgb(255,255,255);text-decoration-line:none"><span></span><span style="p-x:20px;p-y:12px;max-width:100%;display:inline-block;line-height:120%;text-decoration:none;text-transform:none;mso-padding-alt:0px;mso-text-raise:9px"</span><span>Reactivate</span></a></td>
-                                  </tr>
-                                </tbody>
-                          </table>
-                          <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">Best,<p target="_blank" style="color:rgb(0,0,0);text-decoration:none;text-decoration-line:none">The <strong>${process.env.COMPANY}</strong> Team</p></p>
-                          </td>
-                      </tr>
-                    </table>
-                  </body>
-                
-                </html>`,
-            };
-
-            await transporter.sendMail(mailOptions);
-            res.json({ success: true, message: '' });
-
-        } catch (error) {
-            console.log('Error', error);
-        }
-    });
+        await cancelOwnedSubscription(req, { _id: subscriptionDetails._id });
+        res.json({ success: true, message: '' });
+    } catch (error) {
+        console.log('Error', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
 
 });
 
 //UPDATE SUBSCRIPTION
-app.post('/api/paypalupdate', async (req, res) => {
+app.post('/api/paypalupdate', authMiddleware, async (req, res) => {
     const { id, idPlan } = req.body;
+    const subscriptionDetails = await findOwnedSubscription(req, { subscription: id });
+    if (!subscriptionDetails) return res.status(404).json({ success: false, message: 'Subscription not found' });
 
     const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
     const PAYPAL_APP_SECRET_KEY = process.env.PAYPAL_APP_SECRET_KEY;
@@ -1322,73 +1379,38 @@ app.post('/api/paypalupdate', async (req, res) => {
 });
 
 //UPDATE SUBSCRIPTION AND USER DETAILS
-app.post('/api/paypalupdateuser', async (req, res) => {
-    const { id, mName, email, user, plan } = req.body;
+app.post('/api/paypalupdateuser', authMiddleware, async (req, res) => {
+    const { id, plan } = req.body;
 
-    await Subscription.findOneAndUpdate(
-        { subscription: id },
-        { $set: { plan: plan } }
-    ).then(async r => {
-        await User.findOneAndUpdate(
-            { _id: user },
-            { $set: { type: plan } }
-        ).then(async ress => {
-            const transporter = nodemailer.createTransport({
-                host: 'smtp.gmail.com',
-                port: 465,
-                service: 'gmail',
-                secure: true,
-                auth: {
-                    user: process.env.EMAIL,
-                    pass: process.env.PASSWORD,
-                },
-            });
+    try {
+        const user = await User.findOne({ _id: req.user.userId });
+        const existingSubscription = await findOwnedSubscription(req, { subscription: id });
+        if (!user || !existingSubscription) return res.status(404).json({ success: false, message: 'Subscription not found' });
 
-            const mailOptions = {
-                from: process.env.EMAIL,
-                to: email,
-                subject: `${mName} Your Subscription Plan Has Been Modifed`,
-                html: `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-                <meta http-equiv="Content-Type" content="text/html charset=UTF-8" />
-                <html lang="en">
-    
-                  <head></head>
-                 <div id="__react-email-preview" style="display:none;overflow:hidden;line-height:1px;opacity:0;max-height:0;max-width:0">Subscription Modifed<div> ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿</div>
-                 </div>
-    
-    <body style="padding:20px; margin-left:auto;margin-right:auto;margin-top:auto;margin-bottom:auto;background-color:#f6f9fc;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, &quot;Noto Sans&quot;, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;">
-                    <table align="center" role="presentation" cellSpacing="0" cellPadding="0" border="0" height="80%" width="100%" style="max-width:37.5em;max-height:80%; margin-left:auto;margin-right:auto;margin-top:80px;margin-bottom:80px;width:465px;border-radius:0.25rem;border-width:1px;background-color:#fff;padding:20px">
-                      <tr style="width:100%">
-                        <td>
-                          <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-top:32px">
-                            <tbody>
-                              <tr>
-                                <td><img alt="Vercel" src="${process.env.LOGO}" width="40" height="37" style="display:block;outline:none;border:none;text-decoration:none;margin-left:auto;margin-right:auto;margin-top:0px;margin-bottom:0px" /></td>
-                              </tr>
-                            </tbody>
-                          </table>
-                          <h1 style="margin-left:0px;margin-right:0px;margin-top:30px;margin-bottom:30px;padding:0px;text-align:center;font-size:24px;font-weight:400;color:rgb(0,0,0)">Subscription Modifed</h1>
-                          <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">${mName}, your subscription plan has been Modifed.</p>
-                          <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-bottom:32px;margin-top:32px;text-align:center">
-                          </table>
-                          <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">Best,<p target="_blank" style="color:rgb(0,0,0);text-decoration:none;text-decoration-line:none">The <strong>${process.env.COMPANY}</strong> Team</p></p>
-                          </td>
-                      </tr>
-                    </table>
-                  </body>
-    
-                </html>`,
-            };
+        await persistSubscription({
+            userId: req.user.userId,
+            subscription: id,
+            subscriberId: existingSubscription.subscriberId,
+            plan,
+            method: existingSubscription.method,
+        });
 
-            await transporter.sendMail(mailOptions);
-        })
-    });
+        await sendMail({
+            to: user.email,
+            subject: `${user.mName} Your Subscription Plan Has Been Modifed`,
+            html: emailTemplate({ title: 'Subscription Modifed', body: paragraph(user.mName + ', your subscription plan has been Modifed.') }),
+        });
+        res.json({ success: true, message: 'Subscription updated successfully' });
+    } catch (error) {
+        console.log('Error', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
 
 });
 
 //CREATE RAZORPAY SUBSCRIPTION
-app.post('/api/razorpaycreate', async (req, res) => {
-    const { plan, email, fullAddress } = req.body;
+app.post('/api/razorpaycreate', authMiddleware, async (req, res) => {
+    const { plan, planName, fullAddress } = req.body;
     try {
         const YOUR_KEY_ID = process.env.RAZORPAY_KEY_ID;
         const YOUR_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
@@ -1402,7 +1424,7 @@ app.post('/api/razorpaycreate', async (req, res) => {
                 notes_key_1: fullAddress,
             },
             notify_info: {
-                notify_email: email
+                notify_email: req.user.email
             }
         };
 
@@ -1418,42 +1440,31 @@ app.post('/api/razorpaycreate', async (req, res) => {
 
         const requestData = JSON.stringify(requestBody);
 
-        axios.post('https://api.razorpay.com/v1/subscriptions', requestData, config)
-            .then(response => {
-                res.send(response.data);
-            })
-            .catch(error => {
-                console.log('Error', error);
-            });
+        const response = await axios.post('https://api.razorpay.com/v1/subscriptions', requestData, config);
+        await reserveSubscription({
+            userId: req.user.userId,
+            subscription: response.data.id,
+            subscriberId: req.user.email,
+            plan: planName || plan,
+            method: 'razorpay',
+        });
+        res.send(response.data);
 
     } catch (error) {
         console.log('Error', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
     }
 
 });
 
 //GET RAZORPAY SUBSCRIPTION DETAILS
-app.post('/api/razorapydetails', async (req, res) => {
+app.post('/api/razorapydetails', authMiddleware, async (req, res) => {
 
-    const { subscriberId, uid, plan } = req.body;
+    const { subscriberId, plan } = req.body;
 
-    let cost = 0;
-    if (plan === process.env.MONTH_TYPE) {
-        cost = process.env.MONTH_COST
-    } else {
-        cost = process.env.YEAR_COST
-    }
-    cost = cost / 4;
-
-    await Admin.findOneAndUpdate(
-        { type: 'main' },
-        { $inc: { total: cost } }
-    );
-
-    await User.findOneAndUpdate(
-        { _id: uid },
-        { $set: { type: plan } }
-    ).then(async result => {
+    try {
+        const ownedPending = await findOwnedSubscription(req, { subscription: subscriberId });
+        if (!ownedPending) return res.status(403).json({ success: false, message: 'Subscription does not belong to this user' });
 
         const YOUR_KEY_ID = process.env.RAZORPAY_KEY_ID;
         const YOUR_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
@@ -1469,24 +1480,21 @@ app.post('/api/razorapydetails', async (req, res) => {
             }
         };
 
-        axios.get(`https://api.razorpay.com/v1/subscriptions/${SUBSCRIPTION_ID}`, config)
-            .then(response => {
-                res.send(response.data);
-            })
-            .catch(error => {
-                //DO NOTHING
-            });
-
-    }).catch(error => {
+        const response = await axios.get(`https://api.razorpay.com/v1/subscriptions/${SUBSCRIPTION_ID}`, config);
+        await persistSubscription({ userId: req.user.userId, subscription: response.data.id || subscriberId, subscriberId: req.user.email, plan, method: 'razorpay' });
+        res.send(response.data);
+    } catch (error) {
         res.status(500).json({ success: false, message: 'Internal server error' });
-    })
+    }
 
 });
 
 //RAZORPAY PENDING
-app.post('/api/razorapypending', async (req, res) => {
+app.post('/api/razorapypending', authMiddleware, async (req, res) => {
 
     const { sub } = req.body;
+    const subscriptionDetails = await findOwnedSubscription(req, { subscription: sub });
+    if (!subscriptionDetails) return res.status(404).json({ success: false, message: 'Subscription not found' });
 
     const YOUR_KEY_ID = process.env.RAZORPAY_KEY_ID;
     const YOUR_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
@@ -1513,12 +1521,14 @@ app.post('/api/razorapypending', async (req, res) => {
 });
 
 //RAZORPAY CANCEL SUBSCRIPTION 
-app.post('/api/razorpaycancel', async (req, res) => {
-    const { id, email } = req.body;
+app.post('/api/razorpaycancel', authMiddleware, async (req, res) => {
+    const { id } = req.body;
 
     const YOUR_KEY_ID = process.env.RAZORPAY_KEY_ID;
     const YOUR_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
     const SUBSCRIPTION_ID = id;
+    const subscriptionDetails = await findOwnedSubscription(req, { subscription: id });
+    if (!subscriptionDetails) return res.status(404).json({ success: false, message: 'Subscription not found' });
 
     const requestBody = {
         cancel_at_cycle_end: 0
@@ -1537,72 +1547,7 @@ app.post('/api/razorpaycancel', async (req, res) => {
     axios.post(`https://api.razorpay.com/v1/subscriptions/${SUBSCRIPTION_ID}/cancel`, requestBody, config)
         .then(async resp => {
             try {
-                const subscriptionDetails = await Subscription.findOne({ subscriberId: email });
-                const userId = subscriptionDetails.user;
-
-                await User.findOneAndUpdate(
-                    { _id: userId },
-                    { $set: { type: 'free' } }
-                );
-
-                const userDetails = await User.findOne({ _id: userId });
-                await Subscription.findOneAndDelete({ subscription: id });
-
-                const transporter = nodemailer.createTransport({
-                    host: 'smtp.gmail.com',
-                    port: 465,
-                    service: 'gmail',
-                    secure: true,
-                    auth: {
-                        user: process.env.EMAIL,
-                        pass: process.env.PASSWORD,
-                    },
-                });
-
-                const Reactivate = process.env.WEBSITE_URL + "/pricing";
-
-                const mailOptions = {
-                    from: process.env.EMAIL,
-                    to: userDetails.email,
-                    subject: `${userDetails.mName} Your Subscription Plan Has Been Cancelled`,
-                    html: `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-                    <meta http-equiv="Content-Type" content="text/html charset=UTF-8" />
-                    <html lang="en">
-                    
-                      <head></head>
-                     <div id="__react-email-preview" style="display:none;overflow:hidden;line-height:1px;opacity:0;max-height:0;max-width:0">Subscription Cancelled<div> ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿</div>
-                     </div>
-                    
-<body style="padding:20px; margin-left:auto;margin-right:auto;margin-top:auto;margin-bottom:auto;background-color:#f6f9fc;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, &quot;Noto Sans&quot;, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;">
-                    <table align="center" role="presentation" cellSpacing="0" cellPadding="0" border="0" height="80%" width="100%" style="max-width:37.5em;max-height:80%; margin-left:auto;margin-right:auto;margin-top:80px;margin-bottom:80px;width:465px;border-radius:0.25rem;border-width:1px;background-color:#fff;padding:20px">
-                          <tr style="width:100%">
-                            <td>
-                              <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-top:32px">
-                                <tbody>
-                                  <tr>
-                                    <td><img alt="Vercel" src="${process.env.LOGO}" width="40" height="37" style="display:block;outline:none;border:none;text-decoration:none;margin-left:auto;margin-right:auto;margin-top:0px;margin-bottom:0px" /></td>
-                                  </tr>
-                                </tbody>
-                              </table>
-                              <h1 style="margin-left:0px;margin-right:0px;margin-top:30px;margin-bottom:30px;padding:0px;text-align:center;font-size:24px;font-weight:400;color:rgb(0,0,0)">Subscription Cancelled</h1>
-                              <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">${userDetails.mName}, your subscription plan has been Cancelled. Reactivate your plan by clicking on the button below.</p>
-                              <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-bottom:32px;margin-top:32px;text-align:center">
-                                   <tbody>
-                                      <tr>
-                                        <td><a href="${Reactivate}" target="_blank" style="p-x:20px;p-y:12px;line-height:100%;text-decoration:none;display:inline-block;max-width:100%;padding:12px 20px;border-radius:0.25rem;background-color: #007BFF;text-align:center;font-size:12px;font-weight:600;color:rgb(255,255,255);text-decoration-line:none"><span></span><span style="p-x:20px;p-y:12px;max-width:100%;display:inline-block;line-height:120%;text-decoration:none;text-transform:none;mso-padding-alt:0px;mso-text-raise:9px"</span><span>Reactivate</span></a></td>
-                                      </tr>
-                                    </tbody>
-                              </table>
-                              <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">Best,<p target="_blank" style="color:rgb(0,0,0);text-decoration:none;text-decoration-line:none">The <strong>${process.env.COMPANY}</strong> Team</p></p>
-                              </td>
-                          </tr>
-                        </table>
-                      </body>
-                    
-                    </html>`,
-                };
-
-                await transporter.sendMail(mailOptions);
+                await cancelOwnedSubscription(req, { _id: subscriptionDetails._id });
                 res.json({ success: true, message: '' });
 
             } catch (error) {
@@ -1611,6 +1556,7 @@ app.post('/api/razorpaycancel', async (req, res) => {
         })
         .catch(error => {
             console.log('Error', error);
+            res.status(500).json({ success: false, message: 'Internal server error' });
         });
 });
 
@@ -1797,13 +1743,14 @@ app.get('/api/policies', async (req, res) => {
 });
 
 //STRIPE PAYMENT
-app.post('/api/stripepayment', async (req, res) => {
-    const { planId } = req.body;
+app.post('/api/stripepayment', authMiddleware, async (req, res) => {
+    const { planId, planName } = req.body;
 
     try {
         const session = await stripe.checkout.sessions.create({
             success_url: `${process.env.WEBSITE_URL}/payment-success/${planId}`,
             cancel_url: `${process.env.WEBSITE_URL}/payment-failed`,
+            customer_email: req.user.email,
             line_items: [
                 {
                     price: planId,
@@ -1813,6 +1760,13 @@ app.post('/api/stripepayment', async (req, res) => {
             mode: 'subscription',
         });
 
+        await reserveSubscription({
+            userId: req.user.userId,
+            subscription: session.id,
+            subscriberId: session.id,
+            plan: planName || planId,
+            method: 'stripe',
+        });
         res.json({ url: session.url, id: session.id })
     } catch (e) {
         console.log('Error', e);
@@ -1821,109 +1775,39 @@ app.post('/api/stripepayment', async (req, res) => {
 
 });
 
-app.post('/api/stripedetails', async (req, res) => {
-    const { subscriberId, uid, plan } = req.body;
+app.post('/api/stripedetails', authMiddleware, async (req, res) => {
+    const { subscriberId, plan } = req.body;
 
-    let cost = 0;
-    if (plan === process.env.MONTH_TYPE) {
-        cost = process.env.MONTH_COST
-    } else {
-        cost = process.env.YEAR_COST
-    }
-    cost = cost / 4;
-
-    await Admin.findOneAndUpdate(
-        { type: 'main' },
-        { $inc: { total: cost } }
-    );
-
-    await User.findOneAndUpdate(
-        { _id: uid },
-        { $set: { type: plan } }
-    ).then(async result => {
+    try {
+        const ownedPending = await findOwnedSubscription(req, { subscription: subscriberId });
         const session = await stripe.checkout.sessions.retrieve(subscriberId);
+        const providerEmail = session.customer_details?.email || session.customer_email;
+        if (!ownedPending && providerEmail && providerEmail !== req.user.email) {
+            return res.status(403).json({ success: false, message: 'Subscription does not belong to this user' });
+        }
+        await persistSubscription({
+            userId: req.user.userId,
+            subscription: session.subscription || subscriberId,
+            subscriberId: session.subscription || subscriberId,
+            plan,
+            method: 'stripe',
+        });
         res.send(session);
-    }).catch(error => {
+    } catch (error) {
         console.log('Error', error);
         res.status(500).json({ success: false, message: 'Internal server error' });
-    })
+    }
 
 });
 
-app.post('/api/stripecancel', async (req, res) => {
-    const { id, email } = req.body;
-
-    const subscription = await stripe.subscriptions.cancel(
-        id
-    );
+app.post('/api/stripecancel', authMiddleware, async (req, res) => {
+    const { id } = req.body;
+    const subscriptionDetails = await findOwnedSubscription(req, { subscriberId: id });
+    if (!subscriptionDetails) return res.status(404).json({ success: false, message: 'Subscription not found' });
 
     try {
-        const subscriptionDetails = await Subscription.findOne({ subscriberId: email });
-        const userId = subscriptionDetails.user;
-
-        await User.findOneAndUpdate(
-            { _id: userId },
-            { $set: { type: 'free' } }
-        );
-
-        const userDetails = await User.findOne({ _id: userId });
-        await Subscription.findOneAndDelete({ subscriberId: id });
-
-        const transporter = nodemailer.createTransport({
-            host: 'smtp.gmail.com',
-            port: 465,
-            service: 'gmail',
-            secure: true,
-            auth: {
-                user: process.env.EMAIL,
-                pass: process.env.PASSWORD,
-            },
-        });
-
-        const Reactivate = process.env.WEBSITE_URL + "/pricing";
-
-        const mailOptions = {
-            from: process.env.EMAIL,
-            to: userDetails.email,
-            subject: `${userDetails.mName} Your Subscription Plan Has Been Cancelled`,
-            html: `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-                <meta http-equiv="Content-Type" content="text/html charset=UTF-8" />
-                <html lang="en">
-                
-                  <head></head>
-                 <div id="__react-email-preview" style="display:none;overflow:hidden;line-height:1px;opacity:0;max-height:0;max-width:0">Subscription Cancelled<div> ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿</div>
-                 </div>
-
-<body style="padding:20px; margin-left:auto;margin-right:auto;margin-top:auto;margin-bottom:auto;background-color:#f6f9fc;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, &quot;Noto Sans&quot;, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;">
-                    <table align="center" role="presentation" cellSpacing="0" cellPadding="0" border="0" height="80%" width="100%" style="max-width:37.5em;max-height:80%; margin-left:auto;margin-right:auto;margin-top:80px;margin-bottom:80px;width:465px;border-radius:0.25rem;border-width:1px;background-color:#fff;padding:20px">
-                      <tr style="width:100%">
-                        <td>
-                          <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-top:32px">
-                            <tbody>
-                              <tr>
-                                <td><img alt="Vercel" src="${process.env.LOGO}" width="40" height="37" style="display:block;outline:none;border:none;text-decoration:none;margin-left:auto;margin-right:auto;margin-top:0px;margin-bottom:0px" /></td>
-                              </tr>
-                            </tbody>
-                          </table>
-                          <h1 style="margin-left:0px;margin-right:0px;margin-top:30px;margin-bottom:30px;padding:0px;text-align:center;font-size:24px;font-weight:400;color:rgb(0,0,0)">Subscription Cancelled</h1>
-                          <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">${userDetails.mName}, your subscription plan has been Cancelled. Reactivate your plan by clicking on the button below.</p>
-                          <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-bottom:32px;margin-top:32px;text-align:center">
-                               <tbody>
-                                  <tr>
-                                    <td><a href="${Reactivate}" target="_blank" style="p-x:20px;p-y:12px;line-height:100%;text-decoration:none;display:inline-block;max-width:100%;padding:12px 20px;border-radius:0.25rem;background-color: #007BFF;text-align:center;font-size:12px;font-weight:600;color:rgb(255,255,255);text-decoration-line:none"><span></span><span style="p-x:20px;p-y:12px;max-width:100%;display:inline-block;line-height:120%;text-decoration:none;text-transform:none;mso-padding-alt:0px;mso-text-raise:9px"</span><span>Reactivate</span></a></td>
-                                  </tr>
-                                </tbody>
-                          </table>
-                          <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">Best,<p target="_blank" style="color:rgb(0,0,0);text-decoration:none;text-decoration-line:none">The <strong>${process.env.COMPANY}</strong> Team</p></p>
-                          </td>
-                      </tr>
-                    </table>
-                  </body>
-                
-                </html>`,
-        };
-
-        await transporter.sendMail(mailOptions);
+        await stripe.subscriptions.cancel(id);
+        await cancelOwnedSubscription(req, { _id: subscriptionDetails._id });
         res.json({ success: true, message: '' });
 
     } catch (error) {
@@ -1933,12 +1817,12 @@ app.post('/api/stripecancel', async (req, res) => {
 });
 
 //PAYSTACK PAYMENT
-app.post('/api/paystackpayment', async (req, res) => {
-    const { planId, amountInZar, email } = req.body;
+app.post('/api/paystackpayment', authMiddleware, async (req, res) => {
+    const { planId, amountInZar } = req.body;
     try {
 
         const data = {
-            email: email,
+            email: req.user.email,
             amount: amountInZar,
             plan: planId
         };
@@ -1968,11 +1852,11 @@ app.post('/api/paystackpayment', async (req, res) => {
 });
 
 //PAYSTACK GET DETAIL
-app.post('/api/paystackfetch', async (req, res) => {
-    const { email, uid, plan } = req.body;
+app.post('/api/paystackfetch', authMiddleware, async (req, res) => {
+    const { plan } = req.body;
     try {
 
-        const searchEmail = email;
+        const searchEmail = req.user.email;
         const url = "https://api.paystack.co/subscription";
         const authorization = `Bearer ${process.env.PAYSTACK_SECRET_KEY}`;
 
@@ -1996,29 +1880,14 @@ app.post('/api/paystackfetch', async (req, res) => {
                 });
 
                 if (subscriptionDetails) {
-
-                    let cost = 0;
-                    if (plan === process.env.MONTH_TYPE) {
-                        cost = process.env.MONTH_COST
-                    } else {
-                        cost = process.env.YEAR_COST
-                    }
-                    cost = cost / 4;
-
-                    await Admin.findOneAndUpdate(
-                        { type: 'main' },
-                        { $inc: { total: cost } }
-                    );
-
-                    await User.findOneAndUpdate(
-                        { _id: uid },
-                        { $set: { type: plan } }
-                    ).then(async result => {
-                        res.json({ details: subscriptionDetails });
-                    }).catch(error => {
-                        console.log('Error', error);
-                        res.status(500).json({ success: false, message: 'Internal server error' });
-                    })
+                    await persistSubscription({
+                        userId: req.user.userId,
+                        subscription: subscriptionDetails.customer_code,
+                        subscriberId: subscriptionDetails.subscription_code,
+                        plan,
+                        method: 'paystack',
+                    });
+                    res.json({ details: subscriptionDetails });
 
                 } else {
                     res.status(500).json({ error: 'Internal Server Error' })
@@ -2038,8 +1907,10 @@ app.post('/api/paystackfetch', async (req, res) => {
 });
 
 //PAYSTACK PAYMENT
-app.post('/api/paystackcancel', async (req, res) => {
-    const { code, token, email } = req.body;
+app.post('/api/paystackcancel', authMiddleware, async (req, res) => {
+    const { code, token } = req.body;
+    const subscriptionDetails = await findOwnedSubscription(req, { subscriberId: code });
+    if (!subscriptionDetails) return res.status(404).json({ success: false, message: 'Subscription not found' });
 
     const url = "https://api.paystack.co/subscription/disable";
     const authorization = `Bearer ${process.env.PAYSTACK_SECRET_KEY}`;
@@ -2055,193 +1926,8 @@ app.post('/api/paystackcancel', async (req, res) => {
             'Content-Type': contentType
         }
     }).then(async response => {
-        const subscriptionDetails = await Subscription.findOne({ subscriberId: email });
-        const userId = subscriptionDetails.user;
-
-        await User.findOneAndUpdate(
-            { _id: userId },
-            { $set: { type: 'free' } }
-        );
-
-        const userDetails = await User.findOne({ _id: userId });
-        await Subscription.findOneAndDelete({ subscriberId: code });
-
-        const transporter = nodemailer.createTransport({
-            host: 'smtp.gmail.com',
-            port: 465,
-            service: 'gmail',
-            secure: true,
-            auth: {
-                user: process.env.EMAIL,
-                pass: process.env.PASSWORD,
-            },
-        });
-
-        const Reactivate = process.env.WEBSITE_URL + "/pricing";
-
-        const mailOptions = {
-            from: process.env.EMAIL,
-            to: email,
-            subject: `${userDetails.mName} Your Subscription Plan Has Been Cancelled`,
-            html: `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-                <meta http-equiv="Content-Type" content="text/html charset=UTF-8" />
-                <html lang="en">
-                
-                  <head></head>
-                 <div id="__react-email-preview" style="display:none;overflow:hidden;line-height:1px;opacity:0;max-height:0;max-width:0">Subscription Cancelled<div> ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿</div>
-                 </div>
-                
-                  <body style="padding:20px; margin-left:auto;margin-right:auto;margin-top:auto;margin-bottom:auto;background-color:#f6f9fc;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, &quot;Noto Sans&quot;, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;">
-                    <table align="center" role="presentation" cellSpacing="0" cellPadding="0" border="0" height="80%" width="100%" style="max-width:37.5em;max-height:80%; margin-left:auto;margin-right:auto;margin-top:80px;margin-bottom:80px;width:465px;border-radius:0.25rem;border-width:1px;background-color:#fff;padding:20px">
-                      <tr style="width:100%">
-                        <td>
-                          <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-top:32px">
-                            <tbody>
-                              <tr>
-                                <td><img alt="Vercel" src="${process.env.LOGO}" width="40" height="37" style="display:block;outline:none;border:none;text-decoration:none;margin-left:auto;margin-right:auto;margin-top:0px;margin-bottom:0px" /></td>
-                              </tr>
-                            </tbody>
-                          </table>
-                          <h1 style="margin-left:0px;margin-right:0px;margin-top:30px;margin-bottom:30px;padding:0px;text-align:center;font-size:24px;font-weight:400;color:rgb(0,0,0)">Subscription Cancelled</h1>
-                          <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">${userDetails.mName}, your subscription plan has been Cancelled. Reactivate your plan by clicking on the button below.</p>
-                          <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-bottom:32px;margin-top:32px;text-align:center">
-                               <tbody>
-                                  <tr>
-                                    <td><a href="${Reactivate}" target="_blank" style="p-x:20px;p-y:12px;line-height:100%;text-decoration:none;display:inline-block;max-width:100%;padding:12px 20px;border-radius:0.25rem;background-color: #007BFF;text-align:center;font-size:12px;font-weight:600;color:rgb(255,255,255);text-decoration-line:none"><span></span><span style="p-x:20px;p-y:12px;max-width:100%;display:inline-block;line-height:120%;text-decoration:none;text-transform:none;mso-padding-alt:0px;mso-text-raise:9px"</span><span>Reactivate</span></a></td>
-                                  </tr>
-                                </tbody>
-                          </table>
-                          <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">Best,<p target="_blank" style="color:rgb(0,0,0);text-decoration:none;text-decoration-line:none">The <strong>${process.env.COMPANY}</strong> Team</p></p>
-                          </td>
-                      </tr>
-                    </table>
-                  </body>
-                </html>`,
-        };
-
-        await transporter.sendMail(mailOptions);
+        await cancelOwnedSubscription(req, { _id: subscriptionDetails._id });
         res.json({ success: true, message: '' });
-    })
-
-});
-
-
-//FLUTTERWAVE PAYMENT
-app.post('/api/flutterwavecancel', async (req, res) => {
-    const { code, token, email } = req.body;
-
-    const payload = { "id": code };
-    const response = await flw.Subscription.cancel(payload)
-    if (response) {
-        const subscriptionDetails = await Subscription.findOne({ subscriberId: email });
-        const userId = subscriptionDetails.user;
-
-        await User.findOneAndUpdate(
-            { _id: userId },
-            { $set: { type: 'free' } }
-        );
-
-        const userDetails = await User.findOne({ _id: userId });
-        await Subscription.findOneAndDelete({ subscriberId: token });
-
-        const transporter = nodemailer.createTransport({
-            host: 'smtp.gmail.com',
-            port: 465,
-            service: 'gmail',
-            secure: true,
-            auth: {
-                user: process.env.EMAIL,
-                pass: process.env.PASSWORD,
-            },
-        });
-
-        const Reactivate = process.env.WEBSITE_URL + "/pricing";
-
-        const mailOptions = {
-            from: process.env.EMAIL,
-            to: email,
-            subject: `${userDetails.mName} Your Subscription Plan Has Been Cancelled`,
-            html: `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-                <meta http-equiv="Content-Type" content="text/html charset=UTF-8" />
-                <html lang="en">
-                
-                  <head></head>
-                 <div id="__react-email-preview" style="display:none;overflow:hidden;line-height:1px;opacity:0;max-height:0;max-width:0">Subscription Cancelled<div> ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿</div>
-                 </div>
-                
-<body style="padding:20px; margin-left:auto;margin-right:auto;margin-top:auto;margin-bottom:auto;background-color:#f6f9fc;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, &quot;Noto Sans&quot;, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;">
-                    <table align="center" role="presentation" cellSpacing="0" cellPadding="0" border="0" height="80%" width="100%" style="max-width:37.5em;max-height:80%; margin-left:auto;margin-right:auto;margin-top:80px;margin-bottom:80px;width:465px;border-radius:0.25rem;border-width:1px;background-color:#fff;padding:20px">
-                      <tr style="width:100%">
-                        <td>
-                          <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-top:32px">
-                            <tbody>
-                              <tr>
-                                <td><img alt="Vercel" src="${process.env.LOGO}" width="40" height="37" style="display:block;outline:none;border:none;text-decoration:none;margin-left:auto;margin-right:auto;margin-top:0px;margin-bottom:0px" /></td>
-                              </tr>
-                            </tbody>
-                          </table>
-                          <h1 style="margin-left:0px;margin-right:0px;margin-top:30px;margin-bottom:30px;padding:0px;text-align:center;font-size:24px;font-weight:400;color:rgb(0,0,0)">Subscription Cancelled</h1>
-                          <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">${userDetails.mName}, your subscription plan has been Cancelled. Reactivate your plan by clicking on the button below.</p>
-                          <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-bottom:32px;margin-top:32px;text-align:center">
-                               <tbody>
-                                  <tr>
-                                    <td><a href="${Reactivate}" target="_blank" style="p-x:20px;p-y:12px;line-height:100%;text-decoration:none;display:inline-block;max-width:100%;padding:12px 20px;border-radius:0.25rem;background-color: #007BFF;text-align:center;font-size:12px;font-weight:600;color:rgb(255,255,255);text-decoration-line:none"><span></span><span style="p-x:20px;p-y:12px;max-width:100%;display:inline-block;line-height:120%;text-decoration:none;text-transform:none;mso-padding-alt:0px;mso-text-raise:9px"</span><span>Reactivate</span></a></td>
-                                  </tr>
-                                </tbody>
-                          </table>
-                          <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">Best,<p target="_blank" style="color:rgb(0,0,0);text-decoration:none;text-decoration-line:none">The <strong>${process.env.COMPANY}</strong> Team</p></p>
-                          </td>
-                      </tr>
-                    </table>
-                  </body>
-                
-                </html>`,
-        };
-
-        await transporter.sendMail(mailOptions);
-        res.json({ success: true, message: '' });
-    } else {
-        res.status(500).json({ success: false, message: 'Internal server error' });
-    }
-});
-
-
-//CHAT
-app.post('/api/chat', async (req, res) => {
-    const receivedData = req.body;
-
-    const promptString = receivedData.prompt;
-
-    const safetySettings = [
-        {
-            category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-        {
-            category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-        {
-            category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-        {
-            category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-    ];
-
-    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite-preview", safetySettings });
-
-    const prompt = promptString;
-
-    await model.generateContent(prompt).then(result => {
-        const response = result.response;
-        const txt = response.text();
-        const converter = new showdown.Converter();
-        const markdownText = txt;
-        const text = converter.makeHtml(markdownText);
-        res.status(200).json({ text });
     }).catch(error => {
         console.log('Error', error);
         res.status(500).json({ success: false, message: 'Internal server error' });
@@ -2250,36 +1936,54 @@ app.post('/api/chat', async (req, res) => {
 });
 
 
-//FLUTTERWAVE GET DETAILS
-app.post('/api/flutterdetails', async (req, res) => {
-    const { email, uid, plan } = req.body;
+//FLUTTERWAVE PAYMENT
+app.post('/api/flutterwavecancel', authMiddleware, async (req, res) => {
+    const { code, token } = req.body;
+    const subscriptionDetails = await findOwnedSubscription(req, { subscriberId: token });
+    if (!subscriptionDetails) return res.status(404).json({ success: false, message: 'Subscription not found' });
+
     try {
-        let cost = 0;
-        if (plan === process.env.MONTH_TYPE) {
-            cost = process.env.MONTH_COST
-        } else {
-            cost = process.env.YEAR_COST
-        }
-        cost = cost / 4;
+        const payload = { "id": code };
+        const response = await flw.Subscription.cancel(payload)
+        if (!response) return res.status(500).json({ success: false, message: 'Internal server error' });
+        await cancelOwnedSubscription(req, { _id: subscriptionDetails._id });
+        res.json({ success: true, message: '' });
+    } catch (error) {
+        console.log('Error', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
 
-        await Admin.findOneAndUpdate(
-            { type: 'main' },
-            { $inc: { total: cost } }
-        );
 
-        await User.findOneAndUpdate(
-            { _id: uid },
-            { $set: { type: plan } }
-        ).then(async result => {
+//CHAT
+app.post('/api/chat', authMiddleware, aiLimiter, validate('prompt'), async (req, res) => {
+    try {
+        const markdownText = await cachedOpenRouterText('chat', req.validated.prompt);
+        const text = markdownToHtml(markdownText);
+        res.status(200).json({ text });
+    } catch (error) {
+        console.log('Error', error);
+        res.status(error.status || 500).json({ success: false, message: error.status ? error.message : 'Internal server error' });
+    }
 
-            const payload = { "email": email };
-            const response = await flw.Subscription.get(payload);
+});
 
-            res.send(response['data'][0]);
-        }).catch(error => {
-            console.log('Error', error);
-            res.status(500).json({ success: false, message: 'Internal server error' });
-        })
+
+//FLUTTERWAVE GET DETAILS
+app.post('/api/flutterdetails', authMiddleware, async (req, res) => {
+    const { plan } = req.body;
+    try {
+        const payload = { "email": req.user.email };
+        const response = await flw.Subscription.get(payload);
+        const session = response['data'][0];
+        await persistSubscription({
+            userId: req.user.userId,
+            subscription: session?.plan || session?.id,
+            subscriberId: session?.plan || session?.id,
+            plan,
+            method: 'flutterwave',
+        });
+        res.send(session);
     } catch (error) {
         console.log('Error', error);
         res.status(500).json({ success: false, message: 'Internal server error' });
@@ -2290,6 +1994,8 @@ app.post('/api/flutterdetails', async (req, res) => {
 app.post('/api/getnotes', authMiddleware, async (req, res) => {
     const { course } = req.body;
     try {
+        const ownedCourse = await requireOwnedCourse(req, res, course);
+        if (!ownedCourse) return;
         const existingNotes = await NotesSchema.findOne({ course: course });
         if (existingNotes) {
             res.json({ success: true, message: existingNotes.notes });
@@ -2306,6 +2012,8 @@ app.post('/api/getnotes', authMiddleware, async (req, res) => {
 app.post('/api/savenotes', authMiddleware, async (req, res) => {
     const { course, notes } = req.body;
     try {
+        const ownedCourse = await requireOwnedCourse(req, res, course);
+        if (!ownedCourse) return;
         const existingNotes = await NotesSchema.findOne({ course: course });
 
         if (existingNotes) {
@@ -2326,8 +2034,11 @@ app.post('/api/savenotes', authMiddleware, async (req, res) => {
 });
 
 //GENERATE EXAMS
-app.post('/api/aiexam', authMiddleware, async (req, res) => {
+app.post('/api/aiexam', authMiddleware, aiLimiter, async (req, res) => {
     const { courseId, mainTopic, subtopicsString, lang } = req.body;
+
+    const ownedCourse = await requireOwnedCourse(req, res, courseId);
+    if (!ownedCourse) return;
 
     const existingNotes = await ExamSchema.findOne({ course: courseId });
     if (existingNotes) {
@@ -2375,40 +2086,18 @@ app.post('/api/aiexam', authMiddleware, async (req, res) => {
         }
         `;
 
-        const safetySettings = [
-            {
-                category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-                threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            },
-            {
-                category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            },
-            {
-                category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            },
-            {
-                category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            },
-        ];
-
-        const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite-preview", safetySettings });
-
-        await model.generateContent(prompt).then(async result => {
-            const response = result.response;
-            const txt = response.text();
-            let output = txt.slice(7, txt.length - 4);
+        try {
+            const txt = await cachedOpenRouterText('aiexam', prompt, { json: true });
+            const output = extractJsonText(txt);
 
             const newNotes = new ExamSchema({ course: courseId, exam: output, marks: "0", passed: false });
             await newNotes.save();
             res.json({ success: true, message: output });
 
-        }).catch(error => {
+        } catch (error) {
             console.log(error);
             res.json({ success: false });
-        })
+        }
 
     }
 
@@ -2418,6 +2107,8 @@ app.post('/api/aiexam', authMiddleware, async (req, res) => {
 app.post('/api/updateresult', authMiddleware, async (req, res) => {
     const { courseId, marksString } = req.body;
     try {
+        const course = await requireOwnedCourse(req, res, courseId);
+        if (!course) return;
 
         await ExamSchema.findOneAndUpdate(
             { course: courseId },
@@ -2435,41 +2126,24 @@ app.post('/api/updateresult', authMiddleware, async (req, res) => {
 });
 
 //SEND EXAM
-app.post('/api/sendexammail', async (req, res) => {
-    const { html, email, subjects } = req.body;
+app.post('/api/sendexammail', authMiddleware, async (req, res) => {
+    const { html, subjects } = req.body;
 
-    const transporter = nodemailer.createTransport({
-        host: 'smtp.gmail.com',
-        port: 465,
-        service: 'gmail',
-        secure: true,
-        auth: {
-            user: process.env.EMAIL,
-            pass: process.env.PASSWORD,
-        },
-    });
-
-    const options = {
-        from: process.env.EMAIL,
-        to: email,
-        subject: '' + subjects,
-        html: html
-    };
-
-    transporter.sendMail(options, (error, info) => {
-        if (error) {
-            console.log('Error', error);
-            res.status(500).json({ success: false, message: 'Failed to send email' });
-        } else {
-            res.json({ success: true, message: 'Email sent successfully' });
-        }
-    });
+    try {
+        await sendMail({ to: req.user.email, subject: '' + subjects, html });
+        res.json({ success: true, message: 'Email sent successfully' });
+    } catch (error) {
+        console.log('Error', error);
+        res.status(500).json({ success: false, message: 'Failed to send email' });
+    }
 });
 
 //GET RESULT
 app.post('/api/getmyresult', authMiddleware, async (req, res) => {
     const { courseId } = req.body;
     try {
+        const course = await requireOwnedCourse(req, res, courseId);
+        if (!course) return;
 
         const existingNotes = await ExamSchema.findOne({ course: courseId });
         const lang = await LangSchema.findOne({ course: courseId });
@@ -2496,16 +2170,24 @@ app.post('/api/getmyresult', authMiddleware, async (req, res) => {
 //DELETE
 app.post('/api/deleteuser', authMiddleware, async (req, res) => {
     try {
-        const { userId } = req.body;;
+        const userId = req.user.userId;
         const deletedUser = await User.findOneAndDelete({ _id: userId });
 
         if (!deletedUser) {
             return res.json({ success: false, message: 'Internal Server Error' });
         }
 
+        const ownedCourses = await Course.find({ user: userId }).select('_id').lean();
+        const courseIds = ownedCourses.map(course => String(course._id));
         await Course.deleteMany({ user: userId });
         await Subscription.deleteMany({ user: userId });
+        if (courseIds.length) {
+            await NotesSchema.deleteMany({ course: { $in: courseIds } });
+            await ExamSchema.deleteMany({ course: { $in: courseIds } });
+            await LangSchema.deleteMany({ course: { $in: courseIds } });
+        }
 
+        clearAuthCookie(res);
         return res.json({ success: true, message: 'Profile deleted successfully' });
 
     } catch (error) {
