@@ -1,7 +1,6 @@
 
 import { appName } from '@/constants';
-import React from 'react';
-import { Helmet } from 'react-helmet-async';
+import { useEffect } from 'react';
 
 interface SEOProps {
   title: string;
@@ -17,30 +16,33 @@ const SEO = ({
   keywords = '',
   canonicalUrl = ''
 }: SEOProps) => {
-  // Format the title to include the brand name
-  const formattedTitle = `${title} | ${appName}`;
+  useEffect(() => {
+    const formattedTitle = `${title} | ${appName}`;
+    const upsertMeta = (selector: string, attrs: Record<string, string>) => {
+      let el = document.head.querySelector(selector) as HTMLMetaElement | HTMLLinkElement | null;
+      if (!el) {
+        el = document.createElement(attrs.rel ? 'link' : 'meta');
+        Object.entries(attrs).forEach(([key, value]) => el!.setAttribute(key, value));
+        document.head.appendChild(el);
+      } else {
+        Object.entries(attrs).forEach(([key, value]) => el!.setAttribute(key, value));
+      }
+    };
 
-  return (
-    <Helmet>
-      {/* Basic metadata */}
-      <title>{formattedTitle}</title>
-      <meta name="description" content={description} />
-      {keywords && <meta name="keywords" content={keywords} />}
+    document.title = formattedTitle;
+    upsertMeta('meta[name="description"]', { name: 'description', content: description });
+    upsertMeta('meta[property="og:type"]', { property: 'og:type', content: 'website' });
+    upsertMeta('meta[property="og:title"]', { property: 'og:title', content: formattedTitle });
+    upsertMeta('meta[property="og:description"]', { property: 'og:description', content: description });
+    upsertMeta('meta[name="twitter:card"]', { name: 'twitter:card', content: 'summary_large_image' });
+    upsertMeta('meta[name="twitter:title"]', { name: 'twitter:title', content: formattedTitle });
+    upsertMeta('meta[name="twitter:description"]', { name: 'twitter:description', content: description });
 
-      {/* Canonical URL */}
-      {canonicalUrl && <link rel="canonical" href={canonicalUrl} />}
+    if (keywords) upsertMeta('meta[name="keywords"]', { name: 'keywords', content: keywords });
+    if (canonicalUrl) upsertMeta('link[rel="canonical"]', { rel: 'canonical', href: canonicalUrl });
+  }, [canonicalUrl, description, keywords, title]);
 
-      {/* Open Graph / Facebook */}
-      <meta property="og:type" content="website" />
-      <meta property="og:title" content={formattedTitle} />
-      <meta property="og:description" content={description} />
-
-      {/* Twitter */}
-      <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:title" content={formattedTitle} />
-      <meta name="twitter:description" content={description} />
-    </Helmet>
-  );
+  return null;
 };
 
 export default SEO;

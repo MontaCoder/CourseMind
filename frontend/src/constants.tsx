@@ -1,9 +1,11 @@
+import appLogoAsset from './res/logo.svg';
+
 //BRAND
 export const appName = 'CourseMind';
 export const companyName = 'MontaCoder';
 export const websiteURL = 'http://localhost:8080';
 export const serverURL = 'http://localhost:5000';
-export const appLogo = 'https://i.postimg.cc/wBL9c9Vp/Gemini-Generated-Image-7fr1527fr1527fr1-Photoroom.png';
+export const appLogo = appLogoAsset;
 export const razorpayEnabled = false;
 export const paypalEnabled = false;
 export const stripeEnabled = true;

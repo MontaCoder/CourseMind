@@ -1,5 +1,5 @@
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import {
   SidebarProvider,
   Sidebar,
@@ -12,7 +12,7 @@ import {
   SidebarRail,
   SidebarTrigger
 } from '@/components/ui/sidebar';
-import { useLocation, Link, Outlet, useNavigate } from 'react-router-dom';
+import { useLocation, Link, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
@@ -33,39 +33,27 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { serverURL } from '@/constants';
-import api from '@/lib/api';
+import { websiteURL } from '@/constants';
+import { useToast } from '@/hooks/use-toast';
+import { logout } from '@/lib/api';
 import Logo from '../../res/logo.svg';
 
 const AdminLayout = () => {
   const isMobile = useIsMobile();
   const location = useLocation();
+  const { toast } = useToast();
 
   // Helper to check active route
   const isActive = (path: string) => location.pathname === path;
 
-  const navigate = useNavigate();
-  function redirectHome() {
-    navigate("/dashboard");
+  async function Logout() {
+    await logout();
+    toast({
+      title: "Logged Out",
+      description: "You have logged out successfully",
+    });
+    window.location.href = websiteURL + '/login';
   }
-
-  useEffect(() => {
-    async function dashboardData() {
-      const postURL = '/api/dashboard';
-      const response = await api.post(postURL);
-      sessionStorage.setItem('adminEmail', response.data.admin.email);
-      if (response.data.admin.email !== sessionStorage.getItem('email')) {
-        redirectHome();
-      }
-    }
-    if (sessionStorage.getItem('adminEmail')) {
-      if (sessionStorage.getItem('adminEmail') !== sessionStorage.getItem('email')) {
-        redirectHome();
-      }
-    } else {
-      dashboardData();
-    }
-  });
 
   return (
     <SidebarProvider>
@@ -207,6 +195,14 @@ const AdminLayout = () => {
                     <ThemeToggle />
                     <span>Toggle Theme</span>
                   </div>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="Logout">
+                  <button type="button" onClick={Logout} className="flex w-full items-center gap-2 text-muted-foreground hover:text-destructive transition-colors">
+                    <LogOut />
+                    <span>Logout</span>
+                  </button>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

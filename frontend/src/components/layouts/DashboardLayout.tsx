@@ -25,7 +25,7 @@ import { appName, websiteURL } from '@/constants';
 import Logo from '../../res/logo.svg';
 import { DownloadIcon } from '@radix-ui/react-icons';
 import { useToast } from '@/hooks/use-toast';
-import api, { clearAuthData } from '@/lib/api';
+import api, { logout } from '@/lib/api';
 
 const DashboardLayout = () => {
   const isMobile = useIsMobile();
@@ -37,23 +37,16 @@ const DashboardLayout = () => {
   const [admin, setAdmin] = useState(false);
 
   useEffect(() => {
-    if (sessionStorage.getItem('uid') === null) {
-      window.location.href = websiteURL + '/login';
-    }
-    async function dashboardData() {
-      const response = await api.post('/api/dashboard');
-      sessionStorage.setItem('adminEmail', response.data.admin.email);
-      if (response.data.admin.email === sessionStorage.getItem('email')) {
-        setAdmin(true);
-      }
-    }
-    if (sessionStorage.getItem('adminEmail')) {
-      if (sessionStorage.getItem('adminEmail') === sessionStorage.getItem('email')) {
-        setAdmin(true);
-      }
-    } else {
-      dashboardData();
-    }
+    api.post('/api/dashboard')
+      .then((response) => {
+        const adminEmail = response.data.admin.email;
+        sessionStorage.setItem('adminEmail', adminEmail);
+        setAdmin(adminEmail === sessionStorage.getItem('email'));
+      })
+      .catch(() => {
+        sessionStorage.removeItem('adminEmail');
+        setAdmin(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -74,8 +67,8 @@ const DashboardLayout = () => {
     })
   }
 
-  function Logout() {
-    clearAuthData();
+  async function Logout() {
+    await logout();
     toast({
       title: "Logged Out",
       description: "You have logged out successfully",
@@ -197,10 +190,10 @@ const DashboardLayout = () => {
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip="Logout">
-                  <Link onClick={Logout} className="text-muted-foreground hover:text-destructive transition-colors">
+                  <button type="button" onClick={Logout} className="flex w-full items-center gap-2 text-muted-foreground hover:text-destructive transition-colors">
                     <LogOut />
                     <span>Logout</span>
-                  </Link>
+                  </button>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
