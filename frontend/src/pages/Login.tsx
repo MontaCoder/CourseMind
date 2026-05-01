@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,15 +10,9 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowRight, Mail, Lock, AlertTriangle } from 'lucide-react';
 import { appName, facebookClientId } from '@/constants';
 import Logo from '../res/logo.svg';
-import api, { setAuthData } from '@/lib/api';
+import api, { hydrateAuth, isAuthenticated, setAuthData } from '@/lib/api';
 import { GoogleLogin } from '@react-oauth/google';
-import { jwtDecode, type JwtPayload } from "jwt-decode";
 import FacebookLogin from '@greatsumini/react-facebook-login';
-
-interface SocialJwtPayload extends JwtPayload {
-  email?: string;
-  name?: string;
-}
 
 interface AuthResponse {
   success: boolean;
@@ -32,9 +26,8 @@ interface AuthResponse {
   };
 }
 
-interface FacebookProfile {
-  email?: string;
-  name?: string;
+interface FacebookAuthResponse {
+  accessToken?: string;
 }
 
 const Login = () => {
@@ -44,17 +37,25 @@ const Login = () => {
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const { toast } = useToast();
+  const redirectHome = useCallback(() => {
+    navigate("/dashboard");
+  }, [navigate]);
 
   useEffect(() => {
-    const auth = sessionStorage.getItem('auth');
-    if (auth) {
+    let active = true;
+    if (isAuthenticated()) {
       redirectHome();
+      return;
     }
-  });
 
-  function redirectHome() {
-    navigate("/dashboard");
-  }
+    hydrateAuth().then((session) => {
+      if (active && session) redirectHome();
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [redirectHome]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,10 +101,9 @@ const Login = () => {
       const jsonData = JSON.parse(dat);
       const type = response.data[0].type.toLowerCase();
       const mainTopic = response.data[0].mainTopic;
-      const user = sessionStorage.getItem('uid');
       const content = JSON.stringify(jsonData);
 
-      const responses = await api.post('/api/courseshared', { user, content, type, mainTopic });
+      const responses = await api.post('/api/courseshared', { content, type, mainTopic });
       if (responses.data.success) {
         sessionStorage.removeItem('shared');
       }
@@ -189,16 +189,9 @@ const Login = () => {
                   setError('Google login failed. Please try again.');
                   return;
                 }
-                const decoded = jwtDecode<SocialJwtPayload>(credential);
-                const email = decoded.email;
-                const name = decoded.name;
-                if (!email || !name) {
-                  setError('Missing Google profile information.');
-                  return;
-                }
                 try {
                   setIsLoading(true);
-                  const response = await api.post<AuthResponse>('/api/social', { email, name });
+                  const response = await api.post<AuthResponse>('/api/social', { provider: 'google', credential });
                   if (response.data.success && response.data.token) {
                     setAuthData({ token: response.data.token, userData: response.data.userData });
                     toast({
@@ -240,25 +233,23 @@ const Login = () => {
                 setIsLoading(false);
                 setError('Internal Server Error');
               }}
-              onProfileSuccess={async (profile: FacebookProfile) => {
-                const email = profile.email;
-                const name = profile.name;
-                if (!email || !name) {
-                  setError('Unable to fetch Facebook profile information.');
+              onSuccess={async (response: FacebookAuthResponse) => {
+                if (!response.accessToken) {
+                  setError('Facebook login failed. Please try again.');
                   return;
                 }
                 try {
                   setIsLoading(true);
-                  const response = await api.post<AuthResponse>('/api/social', { email, name });
-                  if (response.data.success && response.data.token) {
-                    setAuthData({ token: response.data.token, userData: response.data.userData });
+                  const authResponse = await api.post<AuthResponse>('/api/social', { provider: 'facebook', accessToken: response.accessToken });
+                  if (authResponse.data.success && authResponse.data.token) {
+                    setAuthData({ token: authResponse.data.token, userData: authResponse.data.userData });
                     toast({
                       title: "Login successful",
                       description: "Welcome back to " + appName,
                     });
                     redirectHome();
                   } else {
-                    setError(response.data.message ?? 'Unable to log in with Facebook.');
+                    setError(authResponse.data.message ?? 'Unable to log in with Facebook.');
                   }
                 } catch (error) {
                   console.error(error);

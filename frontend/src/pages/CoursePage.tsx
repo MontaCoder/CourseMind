@@ -1,7 +1,7 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-nocheck
 import React, { useEffect, useState, useRef } from 'react';
-import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Accordion,
   AccordionContent,
@@ -10,28 +10,27 @@ import {
 } from '@/components/ui/accordion';
 import { Content } from '@tiptap/react'
 import { MinimalTiptapEditor } from '../minimal-tiptap'
-import YouTube from 'react-youtube';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, Home, Share, Download, MessageCircle, ClipboardCheck, Menu, Award } from 'lucide-react';
+import { Home, Share, Download, MessageCircle, ClipboardCheck, Menu, Award } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Drawer, DrawerContent, DrawerTrigger } from '@/components/ui/drawer';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { ToggleGroup } from '@/components/ui/toggle-group';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { Form, FormControl, FormField, FormItem } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { useForm } from 'react-hook-form';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { appLogo, companyName, serverURL, websiteURL } from '@/constants';
+import { appLogo, websiteURL } from '@/constants';
+import { emailTemplate, paragraph } from '@/lib/email';
 import api from '@/lib/api';
 import ShareOnSocial from 'react-share-on-social';
 import StyledText from '@/components/styledText';
 import html2pdf from 'html2pdf.js';
+import { findYoutubeVideo, generateImage, generateTheory, lessonImagePrompt, lessonPrompt, transcriptSummaryPrompt, youtubeQuery } from '@/lib/course-generation';
+import { courseProgress as getCourseProgress } from '@/lib/course-progress';
 
 const CoursePage = () => {
 
@@ -48,7 +47,7 @@ const CoursePage = () => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [exporting, setExporting] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saving] = useState(false);
   const defaultMessage = `<p>Hey there! I'm your AI teacher. If you have any questions about your ${mainTopic} course, whether it's about videos, images, or theory, just ask me. I'm here to clear your doubts.</p>`;
   const defaultPrompt = `I have a doubt about this topic :- ${mainTopic}. Please clarify my doubt in very short :- `;
 
@@ -60,6 +59,12 @@ const CoursePage = () => {
   const isMobile = useIsMobile();
   const mainContentRef = useRef<HTMLDivElement>(null);
   const [value, setValue] = useState<Content>('')
+
+  const updateProgress = () => {
+    const stats = getCourseProgress(JSON.stringify(jsonData), mainTopic, Boolean(pass));
+    setPercentage(stats.percentage);
+    if (stats.percentage >= 100) setIsCompleted(true);
+  };
 
   async function getNotes() {
     try {
@@ -117,16 +122,6 @@ const CoursePage = () => {
     </div>
   );
 
-  //FROM v4.0
-  const opts = {
-    height: '390',
-    width: '640',
-  };
-
-  const optsMobile = {
-    height: '250px',
-    width: '100%',
-  };
   useEffect(() => {
     loadMessages()
     getNotes()
@@ -137,35 +132,10 @@ const CoursePage = () => {
 
     // Ensure window also scrolls to top
     window.scrollTo(0, 0);
-    const CountDoneTopics = () => {
-      let doneCount = 0;
-      let totalTopics = 0;
-
-      jsonData[mainTopic.toLowerCase()].forEach((topic) => {
-
-        topic.subtopics.forEach((subtopic) => {
-
-          if (subtopic.done) {
-            doneCount++;
-          }
-          totalTopics++;
-        });
-      });
-      totalTopics = totalTopics + 1;
-      if (pass) {
-        doneCount = doneCount + 1;
-      }
-      const completionPercentage = Math.round((doneCount / totalTopics) * 100);
-      setPercentage(completionPercentage);
-      if (completionPercentage >= '100') {
-        setIsCompleted(true);
-      }
-    }
-
     if (!mainTopic) {
       navigate("/create");
     } else {
-      if (percentage >= '100') {
+      if (percentage >= 100) {
         setIsCompleted(true);
       }
 
@@ -183,7 +153,7 @@ const CoursePage = () => {
       }
       setIsLoading(false);
       sessionStorage.setItem('jsonData', JSON.stringify(jsonData));
-      CountDoneTopics();
+      updateProgress();
 
     }
 
@@ -248,28 +218,7 @@ const CoursePage = () => {
   };
 
   const CountDoneTopics = () => {
-    let doneCount = 0;
-    let totalTopics = 0;
-
-    jsonData[mainTopic.toLowerCase()].forEach((topic) => {
-
-      topic.subtopics.forEach((subtopic) => {
-
-        if (subtopic.done) {
-          doneCount++;
-        }
-        totalTopics++;
-      });
-    });
-    totalTopics = totalTopics + 1;
-    if (pass) {
-      totalTopics = totalTopics - 1;
-    }
-    const completionPercentage = Math.round((doneCount / totalTopics) * 100);
-    setPercentage(completionPercentage);
-    if (completionPercentage >= '100') {
-      setIsCompleted(true);
-    }
+    updateProgress();
   }
 
   const handleSelect = (topics, sub) => {
@@ -280,14 +229,14 @@ const CoursePage = () => {
       if (mSubTopic.theory === '' || mSubTopic.theory === undefined || mSubTopic.theory === null) {
         if (type === 'video & text course') {
 
-          const query = `${mSubTopic.title} ${mainTopic} in english`;
+          const query = youtubeQuery(mainTopic, mSubTopic.title);
           setIsLoading(true);
           sendVideo(query, topics, sub, mSubTopic.title);
 
         } else {
 
-          const prompt = `Strictly in ${lang}, Explain me about this subtopic of ${mainTopic} with examples :- ${mSubTopic.title}. Please Strictly Don't Give Additional Resources And Images.`;
-          const promptImage = `Example of ${mSubTopic.title} in ${mainTopic}`;
+          const prompt = lessonPrompt(lang, mainTopic, mSubTopic.title);
+          const promptImage = lessonImagePrompt(mainTopic, mSubTopic.title);
           setIsLoading(true);
           sendPrompt(prompt, promptImage, topics, sub);
 
@@ -305,26 +254,9 @@ const CoursePage = () => {
   };
 
   async function sendPrompt(prompt, promptImage, topics, sub) {
-    const dataToSend = {
-      prompt: prompt,
-    };
     try {
-      const postURL = '/api/generate';
-      const res = await api.post(postURL, dataToSend);
-      const generatedText = res.data.text;
-      const htmlContent = generatedText;
-      try {
-        const parsedJson = htmlContent;
-        sendImage(parsedJson, promptImage, topics, sub);
-      } catch (error) {
-        console.error(error);
-        toast({
-          title: "Error",
-          description: "Internal Server Error",
-        });
-        setIsLoading(false);
-      }
-
+      const theory = await generateTheory(prompt);
+      sendImage(theory, promptImage, topics, sub);
     } catch (error) {
       console.error(error);
       toast({
@@ -336,24 +268,9 @@ const CoursePage = () => {
   }
 
   async function sendImage(parsedJson, promptImage, topics, sub) {
-    const dataToSend = {
-      prompt: promptImage,
-    };
     try {
-      const postURL = '/api/image';
-      const res = await api.post(postURL, dataToSend);
-      try {
-        const generatedText = res.data.url;
-        sendData(generatedText, parsedJson, topics, sub);
-      } catch (error) {
-        console.error(error);
-        toast({
-          title: "Error",
-          description: "Internal Server Error",
-        });
-        setIsLoading(false);
-      }
-
+      const image = await generateImage(promptImage);
+      sendData(image, parsedJson, topics, sub);
     } catch (error) {
       console.error(error);
       toast({
@@ -424,25 +341,9 @@ const CoursePage = () => {
   }
 
   async function sendVideo(query, mTopic, mSubTopic, subtop) {
-    const dataToSend = {
-      prompt: query,
-    };
     try {
-      const postURL = '/api/yt';
-      const res = await api.post(postURL, dataToSend);
-
-      try {
-        const generatedText = res.data.url;
-        sendTranscript(generatedText, mTopic, mSubTopic, subtop);
-      } catch (error) {
-        console.error(error);
-        toast({
-          title: "Error",
-          description: "Internal Server Error",
-        });
-        setIsLoading(false);
-      }
-
+      const video = await findYoutubeVideo(query);
+      sendTranscript(video, mTopic, mSubTopic, subtop);
     } catch (error) {
       console.error(error);
       toast({
@@ -454,53 +355,20 @@ const CoursePage = () => {
   }
 
   async function sendTranscript(url, mTopic, mSubTopic, subtop) {
-    const dataToSend = {
-      prompt: url,
-    };
     try {
-      const postURL = '/api/transcript';
-      const res = await api.post(postURL, dataToSend);
-
-      try {
-        const generatedText = res.data.url;
-        const allText = generatedText.map(item => item.text);
-        const concatenatedText = allText.join(' ');
-        const prompt = `Strictly in ${lang}, Summarize this theory in a teaching way :- ${concatenatedText}.`;
-        sendSummery(prompt, url, mTopic, mSubTopic);
-      } catch (error) {
-        console.error(error)
-        const prompt = `Strictly in ${lang}, Explain me about this subtopic of ${mainTopic} with examples :- ${subtop}. Please Strictly Don't Give Additional Resources And Images.`;
-        sendSummery(prompt, url, mTopic, mSubTopic);
-      }
-
+      const prompt = await transcriptSummaryPrompt(url, lang);
+      sendSummery(prompt, url, mTopic, mSubTopic);
     } catch (error) {
       console.error(error)
-      const prompt = `Strictly in ${lang}, Explain me about this subtopic of ${mainTopic} with examples :- ${subtop}.  Please Strictly Don't Give Additional Resources And Images.`;
+      const prompt = lessonPrompt(lang, mainTopic, subtop);
       sendSummery(prompt, url, mTopic, mSubTopic);
     }
   }
 
   async function sendSummery(prompt, url, mTopic, mSubTopic) {
-    const dataToSend = {
-      prompt: prompt,
-    };
     try {
-      const postURL = '/api/generate';
-      const res = await api.post(postURL, dataToSend);
-      const generatedText = res.data.text;
-      const htmlContent = generatedText;
-      try {
-        const parsedJson = htmlContent;
-        sendDataVideo(url, parsedJson, mTopic, mSubTopic);
-      } catch (error) {
-        console.error(error);
-        toast({
-          title: "Error",
-          description: "Internal Server Error",
-        });
-        setIsLoading(false);
-      }
-
+      const theory = await generateTheory(prompt);
+      sendDataVideo(url, theory, mTopic, mSubTopic);
     } catch (error) {
       console.error(error);
       toast({
@@ -736,58 +604,23 @@ const CoursePage = () => {
 
   async function sendEmail(formattedDate) {
     const userName = sessionStorage.getItem('mName');
-    const email = sessionStorage.getItem('email');
-    const html = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-                <meta http-equiv="Content-Type" content="text/html charset=UTF-8" />
-                <html lang="en">
-                
-                  <head></head>
-                 <div id="__react-email-preview" style="display:none;overflow:hidden;line-height:1px;opacity:0;max-height:0;max-width:0;">Certificate<div> ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿</div>
-                 </div>
-                
-                  <body style="padding:20px; margin-left:auto;margin-right:auto;margin-top:auto;margin-bottom:auto;background-color:#f6f9fc;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, &quot;Noto Sans&quot;, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;">
-                    <table align="center" role="presentation" cellSpacing="0" cellPadding="0" border="0" height="80%" width="100%" style="max-width:37.5em;max-height:80%; margin-left:auto;margin-right:auto;margin-top:80px;margin-bottom:80px;width:465px;border-radius:0.25rem;border-width:1px;background-color:#fff;padding:20px">
-                      <tr style="width:100%">
-                        <td>
-                          <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-top:32px">
-                            <tbody>
-                              <tr>
-                                <td><img alt="Vercel" src="${appLogo}" width="40" height="37" style="display:block;outline:none;border:none;text-decoration:none;margin-left:auto;margin-right:auto;margin-top:0px;margin-bottom:0px" /></td>
-                              </tr>
-                            </tbody>
-                          </table>
-                          <h1 style="margin-left:0px;margin-right:0px;margin-top:30px;margin-bottom:30px;padding:0px;text-align:center;font-size:24px;font-weight:400;color:rgb(0,0,0)">Completion Certificate </h1>
-                          <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">Hello <strong>${userName}</strong>,</p>
-                          <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">We are pleased to inform you that you have successfully completed the ${mainTopic} and are now eligible for your course completion certificate. Congratulations on your hard work and dedication throughout the course!</p>
-                          <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-bottom:32px;margin-top:32px;text-align:center">
-                            <tbody>
-                              <tr>
-                                <td><a href="${websiteURL}" target="_blank" style="p-x:20px;p-y:12px;line-height:100%;text-decoration:none;display:inline-block;max-width:100%;padding:12px 20px;border-radius:0.25rem;background-color: #007BFF;text-align:center;font-size:12px;font-weight:600;color:rgb(255,255,255);text-decoration-line:none"><span></span><span style="p-x:20px;p-y:12px;max-width:100%;display:inline-block;line-height:120%;text-decoration:none;text-transform:none;mso-padding-alt:0px;mso-text-raise:9px"><span>Get Certificate</span></a></td>
-                              </tr>
-                            </tbody>
-                          </table>
-                          <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">Best,<p target="_blank" style="color:rgb(0,0,0);text-decoration:none;text-decoration-line:none">The <strong>${companyName}</strong> Team</p></p>
-                          </td>
-                      </tr>
-                    </table>
-                  </body>
-                
-                </html>`;
+    const html = emailTemplate({
+      title: 'Completion Certificate',
+      preview: 'Completion Certificate',
+      body: [
+        paragraph('Hello <strong>' + userName + '</strong>,'),
+        paragraph('We are pleased to inform you that you have successfully completed the ' + mainTopic + ' course on ' + formattedDate + '.'),
+        paragraph('Your certificate is ready. You can access it from your dashboard whenever you need it.'),
+      ].join(''),
+      buttonHref: websiteURL,
+      buttonText: 'Get Certificate',
+    });
 
     try {
-      const postURL = '/api/sendcertificate';
-      await api.post(postURL, { html, email }).then(res => {
-        navigate('/course/'+courseId+'/certificate', { state: { courseTitle: mainTopic, end: formattedDate } });
-      }).catch(error => {
-        console.error(error);
-        navigate('/course/'+courseId+'/certificate', { state: { courseTitle: mainTopic, end: formattedDate } });
-      });
-
+      await api.post('/api/sendcertificate', { html, courseId });
     } catch (error) {
       console.error(error);
-      navigate('/course/'+courseId+'/certificate', { state: { courseTitle: mainTopic, end: formattedDate } });
     }
-
   }
 
   const renderTopicsAndSubtopicsMobile = (topics) => {
@@ -942,7 +775,14 @@ const CoursePage = () => {
                   <div className="space-y-4">
                     {type === 'video & text course' ?
                       <div>
-                        <YouTube key={media} className='mb-5' videoId={media} opts={opts} />
+                        <iframe
+                          key={media}
+                          className="mb-5 aspect-video w-full max-w-3xl"
+                          src={`https://www.youtube.com/embed/${media}`}
+                          title={selected}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        />
                       </div>
                       :
                       <div>

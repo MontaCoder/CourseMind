@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
 import ShareOnSocial from 'react-share-on-social';
+import { courseProgress as getCourseProgress } from '@/lib/course-progress';
 
 const Dashboard = () => {
 
@@ -21,7 +22,6 @@ const Dashboard = () => {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const userId = sessionStorage.getItem('uid');
   const [courseProgress, setCourseProgress] = useState({});
   const [modules, setTotalModules] = useState({});
   const [isLoading, setIsLoading] = useState(true);
@@ -95,21 +95,21 @@ const Dashboard = () => {
     setIsLoading(page === 1);
     setLoadingMore(page > 1);
     try {
-      const response = await api.get(`/api/courses?userId=${userId}&page=${page}&limit=9`);
+      const response = await api.get(`/api/courses?page=${page}&limit=9`);
       if (response.data.length === 0) {
         setHasMore(false);
       } else {
-        const progressMap = { ...courseProgress }; // Spread existing state
-        const modulesMap = { ...modules }; // Spread existing state
-        for (const course of response.data) {
-          const progress = await CountDoneTopics(course.content, course.mainTopic, course._id);
-          const totalModules = await CountTotalTopics(course.content, course.mainTopic, course._id);
-          progressMap[course._id] = progress;
-          modulesMap[course._id] = totalModules;
-        }
-        setCourseProgress(progressMap);
-        setTotalModules(modulesMap);
-        await setCourses((prevCourses) => [...prevCourses, ...response.data]);
+        const progressMap = {};
+        const modulesMap = {};
+        await Promise.all(response.data.map(async (course) => {
+          const quizPassed = await getQuiz(course._id);
+          const stats = getCourseProgress(course.content, course.mainTopic, quizPassed);
+          progressMap[course._id] = stats.percentage;
+          modulesMap[course._id] = stats.total;
+        }));
+        setCourseProgress((current) => ({ ...current, ...progressMap }));
+        setTotalModules((current) => ({ ...current, ...modulesMap }));
+        setCourses((prevCourses) => [...prevCourses, ...response.data]);
       }
     } catch (error) {
       console.error(error);
@@ -117,7 +117,7 @@ const Dashboard = () => {
       setIsLoading(false);
       setLoadingMore(false);
     }
-  }, [userId, page]);
+  }, [page]);
 
   useEffect(() => {
     fetchUserCourses();
@@ -135,48 +135,6 @@ const Dashboard = () => {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, [handleScroll]);
-
-  const CountDoneTopics = async (json: string, mainTopic: string, courseId: string) => {
-    try {
-      const jsonData = JSON.parse(json);
-      let doneCount = 0;
-      let totalTopics = 0;
-      jsonData[mainTopic.toLowerCase()].forEach((topic: { subtopics: string[]; }) => {
-        topic.subtopics.forEach((subtopic) => {
-          if (subtopic.done) {
-            doneCount++;
-          }
-          totalTopics++;
-        });
-      });
-      const quizCount = await getQuiz(courseId);
-      totalTopics = totalTopics + 1;
-      if (quizCount) {
-        totalTopics = totalTopics - 1;
-      }
-      const completionPercentage = Math.round((doneCount / totalTopics) * 100);
-      return completionPercentage;
-    } catch (error) {
-      console.error(error);
-      return 0;
-    }
-  }
-
-  const CountTotalTopics = async (json: string, mainTopic: string, courseId: string) => {
-    try {
-      const jsonData = JSON.parse(json);
-      let totalTopics = 0;
-      jsonData[mainTopic.toLowerCase()].forEach((topic: { subtopics: string[]; }) => {
-        topic.subtopics.forEach((subtopic) => {
-          totalTopics++;
-        });
-      });
-      return totalTopics;
-    } catch (error) {
-      console.error(error);
-      return 0;
-    }
-  }
 
   async function getQuiz(courseId: string) {
     const response = await api.post('/api/getmyresult', { courseId });
