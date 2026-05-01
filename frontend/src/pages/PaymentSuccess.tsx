@@ -7,7 +7,8 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { CheckCircle, Download, ArrowRight, Receipt } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { appLogo, companyName, MonthCost, serverURL, websiteURL, YearCost } from '@/constants';
+import { companyName, MonthCost, websiteURL, YearCost } from '@/constants';
+import { emailTemplate, paragraph } from '@/lib/email';
 import api from '@/lib/api';
 
 const PaymentSuccess = () => {
@@ -112,7 +113,7 @@ const PaymentSuccess = () => {
 
   useEffect(() => {
     getDetails();
-  });
+  }, []);
 
   async function getDetails() {
 
@@ -126,7 +127,6 @@ const PaymentSuccess = () => {
     if (sessionStorage.getItem('method') === 'stripe') {
       const dataToSend = {
         subscriberId: sessionStorage.getItem('stripe'),
-        uid: sessionStorage.getItem('uid'),
         plan: sessionStorage.getItem('plan')
       };
       const postURL = '/api/stripedetails';
@@ -136,8 +136,6 @@ const PaymentSuccess = () => {
       });
     } else if (sessionStorage.getItem('method') === 'paystack') {
       const dataToSend = {
-        email: sessionStorage.getItem('email'),
-        uid: sessionStorage.getItem('uid'),
         plan: sessionStorage.getItem('plan')
       };
       const postURL = '/api/paystackfetch';
@@ -147,8 +145,6 @@ const PaymentSuccess = () => {
       });
     } else if (sessionStorage.getItem('method') === 'flutterwave') {
       const dataToSend = {
-        email: sessionStorage.getItem('email'),
-        uid: sessionStorage.getItem('uid'),
         plan: sessionStorage.getItem('plan')
       };
       const postURL = '/api/flutterdetails';
@@ -160,7 +156,6 @@ const PaymentSuccess = () => {
       const subscriptionId = planId;
       const dataToSend = {
         subscriberId: subscriptionId,
-        uid: sessionStorage.getItem('uid'),
         plan: sessionStorage.getItem('plan')
       };
       try {
@@ -198,53 +193,20 @@ const PaymentSuccess = () => {
   };
 
   async function sendEmail() {
-    const signInLink = websiteURL + '/login';
-    const html = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-    <meta http-equiv="Content-Type" content="text/html charset=UTF-8" />
-    <html lang="en">
-    
-      <head></head>
-     <div id="__react-email-preview" style="display:none;overflow:hidden;line-height:1px;opacity:0;max-height:0;max-width:0">Payment Successful<div> ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿ ‌​‍‎‏﻿</div>
-     </div>
-    
-      <body style="padding:20px; margin-left:auto;margin-right:auto;margin-top:auto;margin-bottom:auto;background-color:#f6f9fc;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, &quot;Noto Sans&quot;, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;">
-        <table align="center" role="presentation" cellSpacing="0" cellPadding="0" border="0" height="80%" width="100%" style="max-width:37.5em;max-height:80%; margin-left:auto;margin-right:auto;margin-top:80px;margin-bottom:80px;width:465px;border-radius:0.25rem;border-width:1px;background-color:#fff;padding:20px">
-          <tr style="width:100%">
-            <td>
-              <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-top:32px">
-                <tbody>
-                  <tr>
-                    <td><img alt="Vercel" src="${appLogo}" width="40" height="37" style="display:block;outline:none;border:none;text-decoration:none;margin-left:auto;margin-right:auto;margin-top:0px;margin-bottom:0px" /></td>
-                  </tr>
-                </tbody>
-              </table>
-              <h1 style="margin-left:0px;margin-right:0px;margin-top:30px;margin-bottom:30px;padding:0px;text-align:center;font-size:24px;font-weight:400;color:rgb(0,0,0)">Payment Successful</h1>
-              <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">Your payment was successful, and your account ${email} has been upgraded to the ${planName}.</p>
-              <table align="center" border="0" cellPadding="0" cellSpacing="0" role="presentation" width="100%" style="margin-bottom:32px;margin-top:32px;text-align:center">
-                <tbody>
-                  <tr>
-                    <td><a href="${signInLink}" target="_blank" style="p-x:20px;p-y:12px;line-height:100%;text-decoration:none;display:inline-block;max-width:100%;padding:12px 20px;border-radius:0.25rem;background-color: #007BFF;text-align:center;font-size:12px;font-weight:600;color:rgb(255,255,255);text-decoration-line:none"><span></span><span style="p-x:20px;p-y:12px;max-width:100%;display:inline-block;line-height:120%;text-decoration:none;text-transform:none;mso-padding-alt:0px;mso-text-raise:9px"</span><span>SignIn</span></a></td>
-                  </tr>
-                </tbody>
-              </table>
-              <p style="font-size:14px;line-height:24px;margin:16px 0;color:rgb(0,0,0)">Best,<p target="_blank" style="color:rgb(0,0,0);text-decoration:none;text-decoration-line:none">The <strong>${companyName}</strong> Team</p></p>
-              </td>
-          </tr>
-        </table>
-      </body>
-    
-    </html>`;
-
+    const html = emailTemplate({
+      title: 'Payment Successful',
+      preview: 'Payment Successful',
+      body: paragraph('Your payment was successful, and your account ' + email + ' has been upgraded to the ' + planName + '.'),
+      buttonHref: websiteURL + '/login',
+      buttonText: 'SignIn',
+    });
 
     try {
-      const email = sessionStorage.getItem('email');
       const plan = sessionStorage.getItem('plan');
-      const user = sessionStorage.getItem('uid');
       const subscription = planId;
       const subscriberId = sessionStorage.getItem('email');
       const method = sessionStorage.getItem('method');
-      const postURL = '/api/sendreceipt';
-      await api.post(postURL, { html, email, plan, subscriberId, user, method, subscription });
+      await api.post('/api/sendreceipt', { html, plan, subscriberId, method, subscription });
     } catch (error) {
       console.error(error);
     }

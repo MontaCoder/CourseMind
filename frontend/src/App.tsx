@@ -1,9 +1,7 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { HelmetProvider } from "react-helmet-async";
 import { lazy, Suspense } from "react";
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { googleClientId } from "./constants";
@@ -26,17 +24,15 @@ import PaymentSuccess from "./pages/PaymentSuccess";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import About from "./pages/About";
-import PrivacyPolicy from "./pages/PrivacyPolicy";
-import Terms from "./pages/Terms";
 import Contact from "./pages/Contact";
 import Blog from "./pages/Blog";
 import PaymentPending from "./pages/PaymentPending";
 import PaymentFailed from "./pages/PaymentFailed";
-import SubscriptionBillingPolicy from "./pages/SubscriptionBillingPolicy";
-import RefundPolicy from "./pages/RefundPolicy";
-import CancellationPolicy from "./pages/CancellationPolicy";
 import QuizPage from "./pages/QuizPage";
 import BlogPost from "./pages/BlogPost";
+import PolicyPage from "./components/PolicyPage";
+import { RequireAdmin, RequireAuth } from "./components/RouteGuards";
+import { FileText, Shield } from "lucide-react";
 
 // Admin layout
 import AdminLayout from "./components/layouts/AdminLayout";
@@ -48,11 +44,7 @@ const AdminCourses = lazy(() => import("./pages/admin/AdminCourses"));
 const AdminPaidUsers = lazy(() => import("./pages/admin/AdminPaidUsers"));
 const AdminAdmins = lazy(() => import("./pages/admin/AdminAdmins"));
 const AdminContacts = lazy(() => import("./pages/admin/AdminContacts"));
-const AdminTerms = lazy(() => import("./pages/admin/AdminTerms"));
-const AdminPrivacy = lazy(() => import("./pages/admin/AdminPrivacy"));
-const AdminCancellation = lazy(() => import("./pages/admin/AdminCancellation"));
-const AdminRefund = lazy(() => import("./pages/admin/AdminRefund"));
-const AdminSubscriptionBilling = lazy(() => import("./pages/admin/AdminSubscriptionBilling"));
+const AdminPolicyEditor = lazy(() => import("./components/admin/AdminPolicyEditor"));
 const AdminCreateBlog = lazy(() => import("./pages/admin/AdminCreateBlog"));
 const AdminBlogs = lazy(() => import("./pages/admin/AdminBlogs"));
 
@@ -66,32 +58,30 @@ const AdminLoading = () => (
   </div>
 );
 
-const queryClient = new QueryClient();
+const publicPolicies = [
+  { path: "/privacy-policy", title: "Privacy Policy", icon: Shield, dataKey: "privacy", contactText: "Contact Us With Questions" },
+  { path: "/terms", title: "Terms of Service", icon: FileText, dataKey: "terms" },
+  { path: "/cancellation-policy", title: "Subscription Cancellation Policy", icon: FileText, dataKey: "cancel" },
+  { path: "/refund-policy", title: "Refund Policy", icon: FileText, dataKey: "refund" },
+  { path: "/subscription-billing-policy", title: "Subscription Billing Policy", icon: FileText, dataKey: "billing" },
+] as const;
 
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then(registration => {
-        console.log('SW registered:', registration);
-      })
-      .catch(error => {
-        console.log('SW registration failed:', error);
-      });
-  });
-}
-
-// Service worker registration
+const adminPolicies = [
+  ["terms", "Terms of Service", "Manage your terms of service content", "Edit Terms of Service", "terms", "terms", "Start writing Terms of Service.", "Terms of Service saved successfully"],
+  ["privacy", "Privacy Policy", "Manage your privacy policy content", "Edit Privacy Policy", "privacy", "privacy", "Start writing Privacy Policy.", "Privacy policy saved successfully"],
+  ["cancellation", "Cancellation Policy", "Manage your cancellation policy content", "Edit Cancellation Policy", "cancel", "cancel", "Start writing Cancellation Policy.", "Cancellation policy saved successfully"],
+  ["refund", "Refund Policy", "Manage your refund policy content", "Edit Refund Policy", "refund", "refund", "Start writing Refund Policy.", "Refund policy saved successfully"],
+  ["subscription-billing", "Subscription & Billing Policy", "Manage subscription and billing policy content", "Edit Subscription & Billing Policy", "billing", "billing", "Start writing Subscription & Billing Policy.", "Subscription & Billing policy saved successfully"],
+] as const;
 
 const App = () => (
   <GoogleOAuthProvider clientId={googleClientId}>
     <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
-        <HelmetProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
-              <Routes>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
@@ -99,7 +89,7 @@ const App = () => (
                 <Route path="/reset-password/:token" element={<ResetPassword />} />
 
                 {/* Dashboard Routes */}
-                <Route path="/dashboard" element={<DashboardLayout />}>
+                <Route path="/dashboard" element={<RequireAuth><DashboardLayout /></RequireAuth>}>
                   <Route index element={<Dashboard />} />
                   <Route path="generate-course" element={<GenerateCourse />} />
                   <Route path="pricing" element={<ProfilePricing />} />
@@ -108,50 +98,52 @@ const App = () => (
                 </Route>
 
                 {/* Course Routes */}
-                <Route path="/course/:courseId" element={<CoursePage />} />
-                <Route path="/course/:courseId/certificate" element={<Certificate />} />
-                <Route path="/course/:courseId/quiz" element={<QuizPage />} />
+                <Route path="/course/:courseId" element={<RequireAuth><CoursePage /></RequireAuth>} />
+                <Route path="/course/:courseId/certificate" element={<RequireAuth><Certificate /></RequireAuth>} />
+                <Route path="/course/:courseId/quiz" element={<RequireAuth><QuizPage /></RequireAuth>} />
 
                 {/* Payment Routes */}
-                <Route path="/payment-success/:planId" element={<PaymentSuccess />} />
-                <Route path="/payment-pending" element={<PaymentPending />} />
+                <Route path="/payment-success/:planId" element={<RequireAuth><PaymentSuccess /></RequireAuth>} />
+                <Route path="/payment-pending" element={<RequireAuth><PaymentPending /></RequireAuth>} />
                 <Route path="/payment-failed" element={<PaymentFailed />} />
 
                 {/* Static Pages */}
                 <Route path="/about" element={<About />} />
-                <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-                <Route path="/terms" element={<Terms />} />
                 <Route path="/contact" element={<Contact />} />
-                <Route path="/cancellation-policy" element={<CancellationPolicy />} />
-                <Route path="/refund-policy" element={<RefundPolicy />} />
-                <Route path="/subscription-billing-policy" element={<SubscriptionBillingPolicy />} />
+                {publicPolicies.map(({ path, ...config }) => (
+                  <Route key={path} path={path} element={<PolicyPage config={config} />} />
+                ))}
                 <Route path="/blog" element={<Blog />} />
                 <Route path="/blog/:id" element={<BlogPost />} />
 
                 {/* Admin Routes */}
-                <Route path="/admin" element={<AdminLayout />}>
+                <Route path="/admin" element={<RequireAdmin><AdminLayout /></RequireAdmin>}>
                   <Route index element={<Suspense fallback={<AdminLoading />}><AdminDashboard /></Suspense>} />
                   <Route path="users" element={<Suspense fallback={<AdminLoading />}><AdminUsers /></Suspense>} />
                   <Route path="courses" element={<Suspense fallback={<AdminLoading />}><AdminCourses /></Suspense>} />
                   <Route path="paid-users" element={<Suspense fallback={<AdminLoading />}><AdminPaidUsers /></Suspense>} />
                   <Route path="admins" element={<Suspense fallback={<AdminLoading />}><AdminAdmins /></Suspense>} />
                   <Route path="contacts" element={<Suspense fallback={<AdminLoading />}><AdminContacts /></Suspense>} />
-                  <Route path="terms" element={<Suspense fallback={<AdminLoading />}><AdminTerms /></Suspense>} />
-                  <Route path="privacy" element={<Suspense fallback={<AdminLoading />}><AdminPrivacy /></Suspense>} />
-                  <Route path="cancellation" element={<Suspense fallback={<AdminLoading />}><AdminCancellation /></Suspense>} />
-                  <Route path="refund" element={<Suspense fallback={<AdminLoading />}><AdminRefund /></Suspense>} />
-                  <Route path="subscription-billing" element={<Suspense fallback={<AdminLoading />}><AdminSubscriptionBilling /></Suspense>} />
+                  {adminPolicies.map(([path, title, subtitle, cardTitle, storageKey, apiType, placeholder, successMessage]) => (
+                    <Route
+                      key={path}
+                      path={path}
+                      element={
+                        <Suspense fallback={<AdminLoading />}>
+                          <AdminPolicyEditor config={{ title, subtitle, cardTitle, storageKey, apiType, placeholder, successMessage }} />
+                        </Suspense>
+                      }
+                    />
+                  ))}
                   <Route path="create-blog" element={<Suspense fallback={<AdminLoading />}><AdminCreateBlog /></Suspense>} />
                   <Route path="blogs" element={<Suspense fallback={<AdminLoading />}><AdminBlogs /></Suspense>} />
                 </Route>
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
-              </Routes>
-            </BrowserRouter>
-          </TooltipProvider>
-        </HelmetProvider>
-      </QueryClientProvider>
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
     </ThemeProvider>
   </GoogleOAuthProvider>
 );

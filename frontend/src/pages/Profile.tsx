@@ -9,8 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/hooks/use-toast";
 import { PenLine, Save, ShieldCheck, CreditCard, Loader } from "lucide-react";
-import { MonthCost, MonthType, serverURL, YearCost } from '@/constants';
-import api from '@/lib/api';
+import { MonthCost, MonthType, websiteURL, YearCost } from '@/constants';
+import api, { clearAuthData, setAuthData } from '@/lib/api';
 import { DownloadIcon, TrashIcon } from '@radix-ui/react-icons';
 import {
   Dialog,
@@ -68,16 +68,15 @@ const Profile = () => {
   }
 
   function redirectLogin() {
-    sessionStorage.clear();
+    clearAuthData();
     navigate("/login");
   }
 
   async function startDeletion() {
     setProcessingDelete(true);
-    const uid = sessionStorage.getItem('uid');
     const postURL = '/api/deleteuser';
     try {
-      const response = await api.post(postURL, { userId: uid });
+      const response = await api.post(postURL);
       if (response.data.success) {
         toast({
           title: "Profile Deleted",
@@ -122,17 +121,20 @@ const Profile = () => {
       return;
     }
     setProcessing(true);
-    const uid = sessionStorage.getItem('uid');
     const postURL = '/api/profile';
     try {
-      const response = await api.post(postURL, { email: formData.email, mName: formData.name, password: formData.password, uid });
+      const response = await api.post(postURL, { email: formData.email, mName: formData.name, password: formData.password });
       if (response.data.success) {
         toast({
           title: "Profile updated",
           description: "Your profile information has been updated successfully."
         });
-        sessionStorage.setItem('email', formData.email);
-        sessionStorage.setItem('mName', formData.name);
+        if (response.data.token && response.data.userData) {
+          setAuthData({ token: response.data.token, userData: response.data.userData });
+        } else {
+          sessionStorage.setItem('email', formData.email);
+          sessionStorage.setItem('mName', formData.name);
+        }
         setProcessing(false);
         setIsEditing(false);
       } else {
@@ -156,13 +158,9 @@ const Profile = () => {
 
   async function getDetails() {
     if (sessionStorage.getItem('type') !== 'free') {
-      const dataToSend = {
-        uid: sessionStorage.getItem('uid'),
-        email: sessionStorage.getItem('email'),
-      };
       try {
         const postURL = '/api/subscriptiondetail';
-        await api.post(postURL, dataToSend).then(res => {
+        await api.post(postURL).then(res => {
           setMethod(res.data.method);
           setJsonData(res.data.session);
           setPlan(sessionStorage.getItem('type'));
@@ -181,8 +179,7 @@ const Profile = () => {
   async function cancelSubscription() {
     setProcessingCancel(true);
     const dataToSend = {
-      id: jsonData.id,
-      email: sessionStorage.getItem('email')
+      id: jsonData.id
     };
     try {
       if (method === 'stripe') {
@@ -210,8 +207,7 @@ const Profile = () => {
       } else if (method === 'paystack') {
         const dataToSends = {
           code: jsonData.subscription_code,
-          token: jsonData.email_token,
-          email: sessionStorage.getItem('email')
+          token: jsonData.email_token
         };
         const postURL = '/api/paystackcancel';
         await api.post(postURL, dataToSends).then(res => {
@@ -228,8 +224,7 @@ const Profile = () => {
       else if (method === 'flutterwave') {
         const dataToSends = {
           code: jsonData.id,
-          token: jsonData.plan,
-          email: sessionStorage.getItem('email')
+          token: jsonData.plan
         };
         const postURL = '/api/flutterwavecancel';
         await api.post(postURL, dataToSends).then(res => {
