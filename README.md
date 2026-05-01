@@ -1,6 +1,6 @@
 # CourseMind - AI-Powered Course Generation Platform
 
-![CourseMind Logo](https://i.postimg.cc/wBL9c9Vp/Gemini-Generated-Image-7fr1527fr1527fr1-Photoroom.png)
+![CourseMind Logo](frontend/src/res/logo.svg)
 
 CourseMind is an AI-first course creation workspace that transforms raw ideas into premium learning experiences in minutes. Built with cutting-edge AI technology, it enables educators, content creators, and organizations to craft studio-grade courses with narrative structure, multimedia assets, and instant assessments.
 
@@ -45,9 +45,7 @@ CourseMind is an AI-first course creation workspace that transforms raw ideas in
 - **Tailwind CSS** - Utility-first CSS framework
 - **Radix UI** - Accessible component primitives
 - **React Router** - Client-side routing
-- **React Query** - Data fetching and state management
 - **Minimal TipTap** - Rich text editor with extensions
-- **PWA Support** - Service worker for offline capabilities
 
 ### Backend (`/backend`)
 - **Node.js** - Runtime environment
@@ -57,16 +55,15 @@ CourseMind is an AI-first course creation workspace that transforms raw ideas in
 - **Nodemailer** - Email service
 
 ### AI & Integrations
-- **Google Generative AI** - AI content generation
+- **OpenRouter** - AI content generation through the `openrouter/free` model
+- **Pexels** - Course image lookup with a configured fallback image
 - **Stripe, PayPal, Paystack, Flutterwave** - Payment processing
 - **Google OAuth** - Social authentication
 - **Facebook Login** - Social authentication
 
 ### Additional Libraries
 - **TipTap** - Rich text editor
-- **React YouTube** - Video embedding
 - **React PDF** - PDF generation
-- **PWA Support** - Progressive Web App features
 
 ## 🏗️ Project Structure (Monorepo)
 
@@ -156,8 +153,13 @@ npm install
 PORT=5000
 MONGODB_URI=your_mongodb_connection_string
 JWT_SECRET=your_jwt_secret
+OPENROUTER_API_KEY=your_openrouter_api_key
+OPENROUTER_MODEL=openrouter/free
+PEXELS_API_KEY=your_pexels_api_key
+DEFAULT_COURSE_IMAGE_URL=https://your-fallback-course-image-url.com/image.jpg
 GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
+ADMIN_BOOTSTRAP_TOKEN=your_production_admin_bootstrap_token
+PAYPAL_WEBHOOK_ID=your_paypal_webhook_id
 STRIPE_SECRET_KEY=your_stripe_secret_key
 # Add other payment gateway keys as needed
 ```
