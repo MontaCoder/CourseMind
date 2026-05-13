@@ -126,6 +126,7 @@ const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'openrouter/free';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const CACHE_LIMIT = 500;
 const DEFAULT_CACHE_TTL = 30 * 60 * 1000;
+const TRANSCRIPT_TIMEOUT_MS = Number(process.env.TRANSCRIPT_TIMEOUT_MS) || 5000;
 const providerCache = new Map();
 
 const escapeHtml = (text = '') => String(text)
@@ -142,7 +143,8 @@ const inlineMarkdown = (text) => escapeHtml(text)
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
 
 const markdownToHtml = (markdown = '') => {
-    const lines = String(markdown).split(/\r?\n/);
+    const cleanMarkdown = String(markdown).replace(/^```(?:markdown|md)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    const lines = cleanMarkdown.split(/\r?\n/);
     const html = [];
     let listType = null;
 
@@ -209,7 +211,13 @@ const cached = async (key, ttlMs, loader) => {
 
 const extractJsonText = (text) => text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
 
-const openRouterText = async (prompt, { json = false } = {}) => {
+const withTimeout = (promise, ms, message = 'Request timed out') =>
+    Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+    ]);
+
+const openRouterText = async (prompt, { json = false, maxTokens = 1200, temperature = 0.35, system } = {}) => {
     if (!process.env.OPENROUTER_API_KEY) {
         const error = new Error('OPENROUTER_API_KEY is not configured');
         error.status = 503;
@@ -218,7 +226,12 @@ const openRouterText = async (prompt, { json = false } = {}) => {
 
     const response = await axios.post(OPENROUTER_URL, {
         model: OPENROUTER_MODEL,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [
+            ...(system ? [{ role: 'system', content: system }] : []),
+            { role: 'user', content: prompt },
+        ],
+        max_tokens: maxTokens,
+        temperature,
         ...(json ? { response_format: { type: 'json_object' } } : {}),
     }, {
         headers: {
@@ -759,7 +772,7 @@ app.post('/api/reset-password', authLimiter, async (req, res) => {
 //GET DATA FROM MODEL
 app.post('/api/prompt', authMiddleware, aiLimiter, validate('prompt'), async (req, res) => {
     try {
-        const generatedText = await cachedOpenRouterText('prompt', req.validated.prompt, { json: true });
+        const generatedText = await cachedOpenRouterText('prompt', req.validated.prompt, { json: true, maxTokens: 2400, temperature: 0.2 });
         res.status(200).json({ generatedText });
     } catch (error) {
         console.log(error);
@@ -770,7 +783,11 @@ app.post('/api/prompt', authMiddleware, aiLimiter, validate('prompt'), async (re
 //GET GENERATE THEORY
 app.post('/api/generate', authMiddleware, aiLimiter, validate('prompt'), async (req, res) => {
     try {
-        const markdownText = await cachedOpenRouterText('generate', req.validated.prompt);
+        const markdownText = await cachedOpenRouterText('generate', req.validated.prompt, {
+            maxTokens: 1100,
+            temperature: 0.3,
+            system: 'Write concise, well-structured lessons in clean Markdown. Return only the lesson content.',
+        });
         const text = markdownToHtml(markdownText);
         res.status(200).json({ text });
     } catch (error) {
@@ -809,11 +826,13 @@ app.post('/api/yt', authMiddleware, aiLimiter, validate('prompt'), async (req, r
 
 //GET TRANSCRIPT 
 app.post('/api/transcript', authMiddleware, aiLimiter, validate('prompt'), async (req, res) => {
-    cached(`transcript:${cacheKey(req.validated.prompt)}`, DEFAULT_CACHE_TTL, () => YoutubeTranscript.fetchTranscript(req.validated.prompt)).then(video => {
-        res.status(200).json({ url: video });
+    cached(`transcript:${cacheKey(req.validated.prompt)}`, DEFAULT_CACHE_TTL, () =>
+        withTimeout(YoutubeTranscript.fetchTranscript(req.validated.prompt), TRANSCRIPT_TIMEOUT_MS, 'Transcript timed out')
+    ).then(video => {
+        res.status(200).json({ url: Array.isArray(video) ? video : [] });
     }).catch(error => {
         console.log('Error', error);
-        res.status(500).json({ success: false, message: 'Internal server error' });
+        res.status(200).json({ url: [] });
     })
 });
 
@@ -1958,7 +1977,7 @@ app.post('/api/flutterwavecancel', authMiddleware, async (req, res) => {
 //CHAT
 app.post('/api/chat', authMiddleware, aiLimiter, validate('prompt'), async (req, res) => {
     try {
-        const markdownText = await cachedOpenRouterText('chat', req.validated.prompt);
+        const markdownText = await cachedOpenRouterText('chat', req.validated.prompt, { maxTokens: 600, temperature: 0.35 });
         const text = markdownToHtml(markdownText);
         res.status(200).json({ text });
     } catch (error) {
@@ -2087,7 +2106,7 @@ app.post('/api/aiexam', authMiddleware, aiLimiter, async (req, res) => {
         `;
 
         try {
-            const txt = await cachedOpenRouterText('aiexam', prompt, { json: true });
+            const txt = await cachedOpenRouterText('aiexam', prompt, { json: true, maxTokens: 2600, temperature: 0.2 });
             const output = extractJsonText(txt);
 
             const newNotes = new ExamSchema({ course: courseId, exam: output, marks: "0", passed: false });
