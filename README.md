@@ -1,6 +1,8 @@
 # CourseMind - AI-Powered Course Generation Platform
 
-![CourseMind Logo](src/res/logo.svg)
+<div align="center">
+  <img src="src/res/logo.svg" alt="CourseMind Logo" width="250" height="250">
+</div>
 
 CourseMind is an AI-first course creation workspace that transforms raw ideas into premium learning experiences in minutes. Built with cutting-edge AI technology, it enables educators, content creators, and organizations to craft studio-grade courses with narrative structure, multimedia assets, and instant assessments.
 
