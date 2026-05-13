@@ -12,21 +12,9 @@ import { ArrowRight, Mail, Lock, User, AlertTriangle } from 'lucide-react';
 import { appName, facebookClientId } from '@/constants';
 import Logo from '../res/logo.svg';
 import api, { setAuthData } from '@/lib/api';
+import type { AuthResponse } from '@/lib/api-types';
 import { GoogleLogin } from '@react-oauth/google';
 import FacebookLogin from '@greatsumini/react-facebook-login';
-
-interface AuthResponse {
-  success: boolean;
-  message?: string;
-  token?: string;
-  userId?: string;
-  userData: {
-    _id: string;
-    email: string;
-    mName: string;
-    type: string;
-  };
-}
 
 interface FacebookAuthResponse {
   accessToken?: string;

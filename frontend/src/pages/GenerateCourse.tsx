@@ -10,6 +10,9 @@ import CoursePreview from '@/components/CoursePreview';
 import SEO from '@/components/SEO';
 import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
+import type { PromptResponse } from '@/lib/api-types';
+import type { CourseContent } from '@/lib/course-types';
+import { courseKey, parseGeneratedCourseContent } from '@/lib/course-types';
 
 const languages = [
   'English', 'Arabic', 'Bengali', 'Bulgarian', 'Chinese', 'Croatian', 'Czech', 'Danish',
@@ -26,7 +29,7 @@ const GenerateCourse = () => {
   const [subtopics, setSubtopics] = useState<string[]>([]);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [generatedTopics, setGeneratedTopics] = useState({});
+  const [generatedTopics, setGeneratedTopics] = useState<CourseContent>({});
   const [topicsLimit, setTopicsLimit] = useState('4');
   const [courseType, setCourseType] = useState('Text & Image Course');
   const [paidMember, setPaidMember] = useState(false);
@@ -65,8 +68,10 @@ const GenerateCourse = () => {
     setIsSubmitted(true);
 
     const mainTopic = topic.trim();
-    const prompt = `Strictly in ${lang}, Generate a list of Strict ${topicsLimit} topics and any number sub topic for each topic for main title ${mainTopic.toLowerCase()}, everything in single line. Those ${topicsLimit} topics should Strictly include these topics :- ${subtopics.join(', ').toLowerCase()}. Strictly Keep theory, youtube, image field empty. Generate in the form of JSON in this format {
-            "${mainTopic.toLowerCase()}": [
+    const canonicalMainTopic = courseKey(mainTopic);
+    const requiredSubtopics = subtopics.join(', ').toLowerCase();
+    const prompt = `Strictly in ${lang}, generate a list of Strict ${topicsLimit} topics and any number sub topic for each topic for main title ${canonicalMainTopic}, everything in single line. Do not ask clarification questions or say more information is needed; make reasonable educational assumptions and return the course outline. Those ${topicsLimit} topics should Strictly include these topics :- ${requiredSubtopics}. Strictly Keep theory, youtube, image field empty. Return only valid JSON with exactly this top-level key: "${canonicalMainTopic}". Generate in the form of JSON in this format {
+            "${canonicalMainTopic}": [
        {
        "title": "Topic Title",
        "subtopics": [
@@ -109,11 +114,11 @@ const GenerateCourse = () => {
       }`;
 
     try {
-      const res = await api.post('/api/prompt', { prompt });
-      const cleanedJsonString = res.data.generatedText.replace(/```json/g, '').replace(/```/g, '').trim();
-      setGeneratedTopics(JSON.parse(cleanedJsonString));
+      const res = await api.post<PromptResponse>('/api/prompt', { prompt });
+      setGeneratedTopics(parseGeneratedCourseContent(res.data.generatedText, canonicalMainTopic));
     } catch (error) {
       console.error(error);
+      setGeneratedTopics({});
       toast({
         title: 'Generation Failed',
         description: 'AI returned an invalid response. Please try again.',
@@ -130,7 +135,7 @@ const GenerateCourse = () => {
         <SEO title="Generate Course - Preview" description="Preview your AI-generated course before creation" keywords="course generation, preview, AI learning" />
         <CoursePreview
           isLoading={isLoading}
-          courseName={topic.toLowerCase()}
+          courseName={courseKey(topic)}
           topics={generatedTopics}
           type={courseType}
           lang={lang.toLowerCase()}

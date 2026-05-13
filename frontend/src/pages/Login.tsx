@@ -11,20 +11,10 @@ import { ArrowRight, Mail, Lock, AlertTriangle } from 'lucide-react';
 import { appName, facebookClientId } from '@/constants';
 import Logo from '../res/logo.svg';
 import api, { hydrateAuth, isAuthenticated, setAuthData } from '@/lib/api';
+import type { AuthResponse, SharedCourseResponse } from '@/lib/api-types';
+import { normalizeCourseContent } from '@/lib/course-types';
 import { GoogleLogin } from '@react-oauth/google';
 import FacebookLogin from '@greatsumini/react-facebook-login';
-
-interface AuthResponse {
-  success: boolean;
-  message?: string;
-  token?: string;
-  userData: {
-    _id: string;
-    email: string;
-    mName: string;
-    type: string;
-  };
-}
 
 interface FacebookAuthResponse {
   accessToken?: string;
@@ -96,11 +86,11 @@ const Login = () => {
 
   async function getDataFromDatabase(id: string) {
     try {
-      const response = await api.get(`/api/shareable?id=${id}`);
-      const dat = response.data[0].content;
-      const jsonData = JSON.parse(dat);
-      const type = response.data[0].type.toLowerCase();
-      const mainTopic = response.data[0].mainTopic;
+      const response = await api.get<SharedCourseResponse>(`/api/shareable?id=${id}`);
+      const sharedCourse = response.data[0];
+      const jsonData = normalizeCourseContent(JSON.parse(sharedCourse.content), sharedCourse.mainTopic);
+      const type = sharedCourse.type.toLowerCase();
+      const mainTopic = sharedCourse.mainTopic;
       const content = JSON.stringify(jsonData);
 
       const responses = await api.post('/api/courseshared', { content, type, mainTopic });

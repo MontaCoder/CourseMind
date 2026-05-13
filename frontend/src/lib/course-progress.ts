@@ -1,10 +1,10 @@
-type CourseSubtopic = { done?: boolean };
-type CourseTopic = { subtopics?: CourseSubtopic[] };
+import type { CourseTopic } from '@/lib/course-types';
+import { getCourseTopics } from '@/lib/course-types';
 
 export const courseProgress = (content: string, mainTopic: string, quizPassed = false) => {
   try {
     const data = JSON.parse(content);
-    const topics = (data?.[mainTopic.toLowerCase()] || []) as CourseTopic[];
+    const topics = getCourseTopics(data, mainTopic) as CourseTopic[];
     const lessonStats = topics.reduce(
       (stats, topic) => {
         (topic.subtopics || []).forEach((subtopic) => {

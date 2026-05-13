@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import api, { hydrateAuth, isAuthenticated } from '@/lib/api';
+import type { AdminDashboardResponse } from '@/lib/api-types';
 
 const GuardLoading = ({ label = 'Loading...' }: { label?: string }) => (
   <div className="flex min-h-screen items-center justify-center bg-background">
@@ -46,7 +47,7 @@ export const RequireAdmin = ({ children }: { children: ReactNode }) => {
           if (active) setStatus('denied');
           return null;
         }
-        return api.post<{ admin: { email: string } }>('/api/dashboard');
+        return api.post<AdminDashboardResponse>('/api/dashboard');
       })
       .then((response) => {
         if (!response) return;

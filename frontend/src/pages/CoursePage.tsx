@@ -31,13 +31,15 @@ import StyledText from '@/components/styledText';
 import html2pdf from 'html2pdf.js';
 import { findYoutubeVideo, generateImage, generateTheory, lessonImagePrompt, lessonPrompt, transcriptSummaryPrompt, youtubeQuery } from '@/lib/course-generation';
 import { courseProgress as getCourseProgress } from '@/lib/course-progress';
+import { getCourseTopics, normalizeCourseContent } from '@/lib/course-types';
 
 const CoursePage = () => {
 
   //ADDED FROM v4.0
   const { state } = useLocation();
   const { mainTopic, type, courseId, end, pass, lang } = state || {};
-  const jsonData = JSON.parse(sessionStorage.getItem('jsonData'));
+  const jsonData = normalizeCourseContent(JSON.parse(sessionStorage.getItem('jsonData')), mainTopic || '');
+  const currentTopics = getCourseTopics(jsonData, mainTopic || '');
   const [selected, setSelected] = useState('');
   const [theory, setTheory] = useState('');
   const [media, setMedia] = useState('');
@@ -139,8 +141,16 @@ const CoursePage = () => {
         setIsCompleted(true);
       }
 
-      const mainTopicData = jsonData[mainTopic.toLowerCase()][0];
-      const firstSubtopic = mainTopicData.subtopics[0];
+      const mainTopicData = currentTopics[0];
+      const firstSubtopic = mainTopicData?.subtopics?.[0];
+      if (!firstSubtopic) {
+        toast({
+          title: "Course outline needs another try",
+          description: "This course outline is incomplete. Please regenerate the course.",
+        });
+        navigate("/dashboard/generate-course");
+        return;
+      }
       firstSubtopic.done = true
       setSelected(firstSubtopic.title)
       setTheory(firstSubtopic.theory);
@@ -223,7 +233,7 @@ const CoursePage = () => {
 
   const handleSelect = (topics, sub) => {
     if (!isLoading) {
-      const mTopic = jsonData[mainTopic.toLowerCase()].find(topic => topic.title === topics);
+      const mTopic = currentTopics.find(topic => topic.title === topics);
       const mSubTopic = mTopic?.subtopics.find(subtopic => subtopic.title === sub);
 
       if (mSubTopic.theory === '' || mSubTopic.theory === undefined || mSubTopic.theory === null) {
@@ -283,7 +293,7 @@ const CoursePage = () => {
 
   async function sendData(image, theory, topics, sub) {
 
-    const mTopic = jsonData[mainTopic.toLowerCase()].find(topic => topic.title === topics);
+    const mTopic = currentTopics.find(topic => topic.title === topics);
     const mSubTopic = mTopic?.subtopics.find(subtopic => subtopic.title === sub);
     mSubTopic.theory = theory
     mSubTopic.image = image;
@@ -302,7 +312,7 @@ const CoursePage = () => {
 
   async function sendDataVideo(image, theory, topics, sub) {
 
-    const mTopic = jsonData[mainTopic.toLowerCase()].find(topic => topic.title === topics);
+    const mTopic = currentTopics.find(topic => topic.title === topics);
     const mSubTopic = mTopic?.subtopics.find(subtopic => subtopic.title === sub);
     mSubTopic.theory = theory
     mSubTopic.youtube = image;
@@ -356,7 +366,7 @@ const CoursePage = () => {
 
   async function sendTranscript(url, mTopic, mSubTopic, subtop) {
     try {
-      const prompt = await transcriptSummaryPrompt(url, lang);
+      const prompt = await transcriptSummaryPrompt(url, lang, mainTopic, subtop);
       sendSummery(prompt, url, mTopic, mSubTopic);
     } catch (error) {
       console.error(error)
@@ -382,7 +392,7 @@ const CoursePage = () => {
   async function htmlDownload() {
     setExporting(true);
     // Generate the combined HTML content
-    const combinedHtml = await getCombinedHtml(mainTopic, jsonData[mainTopic.toLowerCase()]);
+    const combinedHtml = await getCombinedHtml(mainTopic, currentTopics);
 
     // Create a temporary div element
     const tempDiv = document.createElement('div');
@@ -509,7 +519,7 @@ const CoursePage = () => {
   async function redirectExam() {
     if (!isLoading) {
       setIsLoading(true);
-      const mainTopicExam = jsonData[mainTopic.toLowerCase()];
+      const mainTopicExam = currentTopics;
       let subtopicsString = '';
       mainTopicExam.map((topicTemp) => {
         const titleOfSubTopic = topicTemp.title;
@@ -675,7 +685,7 @@ const CoursePage = () => {
                 <h2 className="text-xl font-bold mb-4">Course Content</h2>
                 <ScrollArea className="h-[60vh]">
                   <div className="pr-4">
-                    {jsonData && renderTopicsAndSubtopics(jsonData[mainTopic.toLowerCase()])}
+                    {jsonData && renderTopicsAndSubtopics(currentTopics)}
                     <p onClick={redirectExam} className='py-2 text-left px-3 hover:bg-accent/50 rounded-md cursor-pointer'>{pass === true ? <span className="mr-2 text-primary">✓</span> : <></>}{mainTopic} Quiz</p>
                   </div>
                 </ScrollArea>
@@ -758,7 +768,7 @@ const CoursePage = () => {
         )}>
           <ScrollArea className="h-full">
             <div className="p-4">
-              {jsonData && renderTopicsAndSubtopicsMobile(jsonData[mainTopic.toLowerCase()])}
+              {jsonData && renderTopicsAndSubtopicsMobile(currentTopics)}
               <p onClick={redirectExam} className='py-2 text-left px-3 hover:bg-accent/50 rounded-md cursor-pointer'>{pass === true ? <span className="mr-2 text-primary">✓</span> : <></>}{mainTopic} Quiz</p>
             </div>
           </ScrollArea>

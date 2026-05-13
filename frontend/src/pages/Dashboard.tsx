@@ -14,6 +14,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useToast } from '@/hooks/use-toast';
 import ShareOnSocial from 'react-share-on-social';
 import { courseProgress as getCourseProgress } from '@/lib/course-progress';
+import type { CourseResultResponse, CoursesResponse } from '@/lib/api-types';
+import { normalizeCourseContent } from '@/lib/course-types';
 
 const Dashboard = () => {
 
@@ -32,44 +34,22 @@ const Dashboard = () => {
   }
 
   async function redirectCourse(content: string, mainTopic: string, type: string, courseId: string, completed: string, end: string) {
-    const response = await api.post('/api/getmyresult', { courseId });
-    if (response.data.success) {
-      const jsonData = JSON.parse(content);
-      sessionStorage.setItem('courseId', courseId);
-      sessionStorage.setItem('first', completed);
-      sessionStorage.setItem('jsonData', JSON.stringify(jsonData));
-      let ending = '';
-      if (completed) ending = end;
-      navigate('/course/' + courseId, {
-        state: {
-          jsonData,
-          mainTopic: mainTopic.toUpperCase(),
-          type: type.toLowerCase(),
-          courseId,
-          end: ending,
-          pass: response.data.message,
-          lang: response.data.lang
-        }
-      });
-    } else {
-      const jsonData = JSON.parse(content);
-      sessionStorage.setItem('courseId', courseId);
-      sessionStorage.setItem('first', completed);
-      sessionStorage.setItem('jsonData', JSON.stringify(jsonData));
-      let ending = '';
-      if (completed) ending = end;
-      navigate('/course/' + courseId, {
-        state: {
-          jsonData,
-          mainTopic: mainTopic.toUpperCase(),
-          type: type.toLowerCase(),
-          courseId,
-          end: ending,
-          pass: false,
-          lang: response.data.lang
-        }
-      });
-    }
+    const response = await api.post<CourseResultResponse>('/api/getmyresult', { courseId });
+    const jsonData = normalizeCourseContent(JSON.parse(content), mainTopic);
+    sessionStorage.setItem('courseId', courseId);
+    sessionStorage.setItem('first', String(completed));
+    sessionStorage.setItem('jsonData', JSON.stringify(jsonData));
+    navigate('/course/' + courseId, {
+      state: {
+        jsonData,
+        mainTopic: mainTopic.toUpperCase(),
+        type: type.toLowerCase(),
+        courseId,
+        end: completed ? end : '',
+        pass: response.data.success ? response.data.message : false,
+        lang: response.data.lang
+      }
+    });
   }
 
   const handleDeleteCourse = async (courseId: number) => {
@@ -95,7 +75,7 @@ const Dashboard = () => {
     setIsLoading(page === 1);
     setLoadingMore(page > 1);
     try {
-      const response = await api.get(`/api/courses?page=${page}&limit=9`);
+      const response = await api.get<CoursesResponse>(`/api/courses?page=${page}&limit=9`);
       if (response.data.length === 0) {
         setHasMore(false);
       } else {
@@ -137,7 +117,7 @@ const Dashboard = () => {
   }, [handleScroll]);
 
   async function getQuiz(courseId: string) {
-    const response = await api.post('/api/getmyresult', { courseId });
+    const response = await api.post<CourseResultResponse>('/api/getmyresult', { courseId });
     if (response.data.success) {
       return response.data.message;
     } else {
