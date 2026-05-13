@@ -1,8 +1,9 @@
 import { serverURL } from '@/constants';
+import type { AuthSession } from '@/lib/api-types';
 
 type ApiResponse<T> = { data: T; status: number };
 type RequestBody = BodyInit | Record<string, unknown> | unknown[] | null | undefined;
-type AuthData = { token: string; userData: { _id: string; email: string; mName: string; type: string } };
+type AuthData = AuthSession;
 let authHydration: Promise<AuthData | null> | null = null;
 let authGeneration = 0;
 

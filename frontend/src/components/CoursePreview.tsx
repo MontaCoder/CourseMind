@@ -16,34 +16,27 @@ import {
   transcriptSummaryPrompt,
   youtubeQuery
 } from '@/lib/course-generation';
+import type { CourseContent } from '@/lib/course-types';
+import { courseKey, getCourseTopics, normalizeCourseContent } from '@/lib/course-types';
+import type { CourseCreateResponse } from '@/lib/api-types';
 
 interface CoursePreviewProps {
   isLoading: boolean;
   courseName: string;
-  topics: Record<string, CourseTopic[]>;
+  topics: CourseContent;
   type: string;
   lang: string;
   onClose?: () => void;
 }
 
-type CourseSubtopic = {
-  title: string;
-  theory?: string;
-  image?: string;
-  youtube?: string;
-  done?: boolean;
-};
-
-type CourseTopic = {
-  title: string;
-  subtopics: CourseSubtopic[];
-};
-
 const CoursePreview = ({ isLoading, courseName, topics, type, lang, onClose }: CoursePreviewProps) => {
   const navigate = useNavigate();
   const [isLoadingCourse, setIsLoadingCourse] = useState(false);
   const { toast } = useToast();
-  const topicKey = courseName.toLowerCase();
+  const topicKey = courseKey(courseName);
+  const normalizedTopics = normalizeCourseContent(topics, courseName);
+  const topicList = getCourseTopics(normalizedTopics, courseName);
+  const hasCourseOutline = topicList.length > 0;
 
   const fail = (error?: unknown) => {
     if (error) console.error(error);
@@ -52,16 +45,21 @@ const CoursePreview = ({ isLoading, courseName, topics, type, lang, onClose }: C
   };
 
   const openCourse = async () => {
-    const response = await api.post('/api/course', { content: JSON.stringify(topics), type, mainTopic: courseName, lang });
+    const response = await api.post<CourseCreateResponse>('/api/course', {
+      content: JSON.stringify(normalizedTopics),
+      type,
+      mainTopic: topicKey,
+      lang
+    });
     if (!response.data.success) return fail();
 
     sessionStorage.setItem('courseId', response.data.courseId);
-    sessionStorage.setItem('first', response.data.completed);
-    sessionStorage.setItem('jsonData', JSON.stringify(topics));
+    sessionStorage.setItem('first', String(response.data.completed));
+    sessionStorage.setItem('jsonData', JSON.stringify(normalizedTopics));
     navigate('/course/' + response.data.courseId, {
       state: {
-        jsonData: topics,
-        mainTopic: courseName.toUpperCase(),
+        jsonData: normalizedTopics,
+        mainTopic: topicKey.toUpperCase(),
         type: type.toLowerCase(),
         courseId: response.data.courseId,
         end: '',
@@ -72,7 +70,8 @@ const CoursePreview = ({ isLoading, courseName, topics, type, lang, onClose }: C
   };
 
   const saveFirstLesson = async (mediaKey: 'image' | 'youtube', media: string, theory: string) => {
-    const firstSubtopic = topics[topicKey][0].subtopics[0];
+    const firstSubtopic = normalizedTopics[topicKey]?.[0]?.subtopics?.[0];
+    if (!firstSubtopic) return fail(new Error('Generated course outline is missing its first lesson.'));
     firstSubtopic.theory = theory;
     firstSubtopic[mediaKey] = media;
     await openCourse();
@@ -88,19 +87,21 @@ const CoursePreview = ({ isLoading, courseName, topics, type, lang, onClose }: C
 
   const createVideoCourse = async (subtopic: string) => {
     const video = await findYoutubeVideo(youtubeQuery(courseName, subtopic));
-    let prompt = lessonPrompt(lang, courseName, subtopic);
-    try {
-      prompt = await transcriptSummaryPrompt(video, lang, 'and :-');
-    } catch (error) {
-      console.error(error);
-    }
+    const prompt = await transcriptSummaryPrompt(video, lang, courseName, subtopic, 'and :-');
     const theory = await generateTheory(prompt);
     await saveFirstLesson('youtube', video, theory);
   };
 
   const handleCreateCourse = async () => {
-    const firstSubtopic = topics?.[topicKey]?.[0]?.subtopics?.[0]?.title;
-    if (!firstSubtopic) return fail();
+    const firstSubtopic = topicList?.[0]?.subtopics?.[0]?.title;
+    if (!firstSubtopic) {
+      toast({
+        title: 'Course outline needs another try',
+        description: 'The generated outline is incomplete. Return to the form and generate it again.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setIsLoadingCourse(true);
     try {
       if (type === 'Video & Text Course') await createVideoCourse(firstSubtopic);
@@ -139,8 +140,6 @@ const CoursePreview = ({ isLoading, courseName, topics, type, lang, onClose }: C
     );
   }
 
-  const topicList = topics?.[topicKey];
-
   return (
     <div className="space-y-6 py-8 animate-fade-in">
       <div className="text-center mb-8">
@@ -152,7 +151,7 @@ const CoursePreview = ({ isLoading, courseName, topics, type, lang, onClose }: C
 
       <ScrollArea className="px-4">
         <div className="space-y-6 max-w-3xl mx-auto pb-6">
-          {Array.isArray(topicList) ? topicList.map((topic) => (
+          {hasCourseOutline ? topicList.map((topic) => (
             <div key={topic.title} className="space-y-2">
               <Card className="bg-black text-white">
                 <CardContent className="p-4 font-bold">{topic.title}</CardContent>
@@ -164,16 +163,24 @@ const CoursePreview = ({ isLoading, courseName, topics, type, lang, onClose }: C
               ))}
             </div>
           )) : (
-            <div className="text-center text-muted-foreground py-8">
-              <p>Failed to load course topics. Please try again.</p>
-            </div>
+            <Card className="border-destructive/30">
+              <CardContent className="space-y-4 p-6 text-center">
+                <div>
+                  <h2 className="text-lg font-semibold">Course outline needs another try</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    The generated outline did not match the expected course format. Return to the form and generate it again.
+                  </p>
+                </div>
+                <Button variant="outline" onClick={onClose}>Back to generator</Button>
+              </CardContent>
+            </Card>
           )}
         </div>
       </ScrollArea>
 
       <div className="flex justify-center gap-4 mt-8">
         <Button disabled={isLoadingCourse} variant="outline" onClick={onClose} className="w-40">Cancel</Button>
-        <Button disabled={isLoadingCourse} onClick={handleCreateCourse} className="w-40 bg-black text-white hover:bg-gray-800">
+        <Button disabled={isLoadingCourse || !hasCourseOutline} onClick={handleCreateCourse} className="w-40 bg-black text-white hover:bg-gray-800">
           {isLoadingCourse ? <Loader className="animate-spin mr-2 h-4 w-4" /> : <CheckCircle className="mr-2 h-4 w-4" />}
           {isLoadingCourse ? 'Generating...' : 'Generate Course'}
         </Button>
