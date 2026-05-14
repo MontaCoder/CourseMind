@@ -72,7 +72,6 @@ const AdminBlogs = () => {
     }, []);
 
     // Update the getImage function
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     function getImage(image?: { data: any; contentType?: any; }) {
         if (!image?.data) return '/placeholder.svg';
         // Handle Buffer data structure from MongoDB

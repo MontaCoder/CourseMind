@@ -190,8 +190,10 @@ export const useMinimalTiptapEditor = ({
 
   const handleBlur = React.useCallback((editor: Editor) => onBlur?.(getOutput(editor, output)), [output, onBlur])
 
+  const extensions = React.useMemo(() => createExtensions(placeholder), [placeholder])
+
   const editor = useEditor({
-    extensions: createExtensions(placeholder),
+    extensions,
     editorProps: {
       attributes: {
         autocomplete: 'off',
@@ -205,6 +207,12 @@ export const useMinimalTiptapEditor = ({
     onBlur: ({ editor }) => handleBlur(editor),
     ...props
   })
+
+  React.useEffect(() => {
+    if (editor && value && editor.isEmpty) {
+      editor.commands.setContent(value)
+    }
+  }, [editor, value])
 
   return editor
 }
