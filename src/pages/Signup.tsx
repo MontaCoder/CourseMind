@@ -44,7 +44,8 @@ const Signup = () => {
     if (auth) {
       redirectHome();
     }
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function redirectHome() {
     navigate("/dashboard");
