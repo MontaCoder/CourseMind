@@ -38,7 +38,14 @@ const CoursePage = () => {
   //ADDED FROM v4.0
   const { state } = useLocation();
   const { mainTopic, type, courseId, end, pass, lang } = state || {};
-  const jsonData = normalizeCourseContent(JSON.parse(sessionStorage.getItem('jsonData')), mainTopic || '');
+  let parsedData = {};
+  try {
+    const raw = sessionStorage.getItem('jsonData');
+    if (raw) parsedData = JSON.parse(raw);
+  } catch {
+    parsedData = {};
+  }
+  const jsonData = normalizeCourseContent(parsedData, mainTopic || '');
   const currentTopics = getCourseTopics(jsonData, mainTopic || '');
   const [selected, setSelected] = useState('');
   const [theory, setTheory] = useState('');
@@ -167,6 +174,7 @@ const CoursePage = () => {
 
     }
 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadMessages = async () => {
@@ -175,7 +183,7 @@ const CoursePage = () => {
       if (jsonValue !== null) {
         setMessages(JSON.parse(jsonValue));
       } else {
-        const newMessages = [...messages, { text: defaultMessage, sender: 'bot' }];
+        const newMessages = [{ id: Date.now(), text: defaultMessage, sender: 'bot' }];
         setMessages(newMessages);
         await storeLocal(newMessages);
       }
@@ -195,10 +203,12 @@ const CoursePage = () => {
   const sendMessage = async () => {
     if (newMessage.trim() === '') return;
 
-    const userMessage = { text: newMessage, sender: 'user' };
-    const updatedMessages = [...messages, userMessage];
-    setMessages(updatedMessages);
-    await storeLocal(updatedMessages);
+    const userMessage = { id: Date.now(), text: newMessage, sender: 'user' };
+    setMessages(prev => {
+      const updated = [...prev, userMessage];
+      storeLocal(updated);
+      return updated;
+    });
     setNewMessage('');
 
     const mainPrompt = defaultPrompt + newMessage;
@@ -213,10 +223,12 @@ const CoursePage = () => {
           description: "Internal Server Error",
         });
       } else {
-        const botMessage = { text: response.data.text, sender: 'bot' };
-        const updatedMessagesWithBot = [...updatedMessages, botMessage];
-        setMessages(updatedMessagesWithBot);
-        await storeLocal(updatedMessagesWithBot);
+        const botMessage = { id: Date.now(), text: response.data.text, sender: 'bot' };
+        setMessages(prev => {
+          const updated = [...prev, botMessage];
+          storeLocal(updated);
+          return updated;
+        });
       }
     } catch (error) {
       toast({
@@ -423,6 +435,9 @@ const CoursePage = () => {
       // Save the PDF
       document.body.removeChild(tempDiv);
       setExporting(false);
+    }).catch(() => {
+      if (tempDiv.parentNode) document.body.removeChild(tempDiv);
+      setExporting(false);
     });
   }
 
@@ -446,9 +461,13 @@ const CoursePage = () => {
             statusText: xhr.statusText,
           });
         };
+        xhr.ontimeout = function () {
+          reject({ status: 0, statusText: 'Timeout' });
+        };
 
         xhr.open("GET", url);
         xhr.responseType = "blob";
+        xhr.timeout = 10000;
         xhr.send();
       }).catch(error => {
         console.error(`Failed to fetch image at ${url}:`, error);
@@ -521,11 +540,7 @@ const CoursePage = () => {
     if (!isLoading) {
       setIsLoading(true);
       const mainTopicExam = currentTopics;
-      let subtopicsString = '';
-      mainTopicExam.map((topicTemp) => {
-        const titleOfSubTopic = topicTemp.title;
-        subtopicsString = subtopicsString + ' , ' + titleOfSubTopic;
-      });
+      const subtopicsString = mainTopicExam.map((topicTemp) => topicTemp.title).join(' , ');
       const response = await api.post('/api/aiexam', { courseId, mainTopic, subtopicsString, lang });
       if (response.data.success) {
         setIsLoading(false);
@@ -557,7 +572,7 @@ const CoursePage = () => {
                     key={subtopic.title}
                     className={cn(
                       "flex items-center px-4 py-2 rounded-md hover:bg-accent/50 transition-colors cursor-pointer",
-                      subtopic.title === "class-objects" && "bg-accent/50 font-medium text-primary"
+                      subtopic.title === selected && "bg-accent/50 font-medium text-primary"
                     )}
                   >
                     {subtopic.done && (
@@ -650,7 +665,7 @@ const CoursePage = () => {
                     key={subtopic.title}
                     className={cn(
                       "flex items-center px-4 py-2 rounded-md hover:bg-accent/50 transition-colors cursor-pointer",
-                      subtopic.title === "class-objects" && "bg-accent/50 font-medium text-primary"
+                      subtopic.title === selected && "bg-accent/50 font-medium text-primary"
                     )}
                   >
                     {subtopic.done && (
@@ -746,10 +761,10 @@ const CoursePage = () => {
               <span className='cursor-pointer'><Download className="h-4 w-4 mr-1" />{exporting ? 'Exporting...' : 'Export'}</span>
             </Button>
             <ShareOnSocial
-              textToShare={sessionStorage.getItem('mName') + " shared you course on " + mainTopic}
+              textToShare={(sessionStorage.getItem('mName') || 'Someone') + " shared you course on " + mainTopic}
               link={websiteURL + '/shareable?id=' + courseId}
-              linkTitle={sessionStorage.getItem('mName') + " shared you course on " + mainTopic}
-              linkMetaDesc={sessionStorage.getItem('mName') + " shared you course on " + mainTopic}
+              linkTitle={(sessionStorage.getItem('mName') || 'Someone') + " shared you course on " + mainTopic}
+              linkMetaDesc={(sessionStorage.getItem('mName') || 'Someone') + " shared you course on " + mainTopic}
               linkFavicon={appLogo}
               noReferer
             >
@@ -824,10 +839,10 @@ const CoursePage = () => {
           <Download className="h-5 w-5" />
         </Button>
         <ShareOnSocial
-          textToShare={sessionStorage.getItem('mName') + " shared you course on " + mainTopic}
+          textToShare={(sessionStorage.getItem('mName') || 'Someone') + " shared you course on " + mainTopic}
           link={websiteURL + '/shareable?id=' + courseId}
-          linkTitle={sessionStorage.getItem('mName') + " shared you course on " + mainTopic}
-          linkMetaDesc={sessionStorage.getItem('mName') + " shared you course on " + mainTopic}
+          linkTitle={(sessionStorage.getItem('mName') || 'Someone') + " shared you course on " + mainTopic}
+          linkMetaDesc={(sessionStorage.getItem('mName') || 'Someone') + " shared you course on " + mainTopic}
           linkFavicon={appLogo}
           noReferer
         >
