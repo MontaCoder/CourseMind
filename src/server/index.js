@@ -66,7 +66,10 @@ const aiLimiter = rateLimit({
 app.use('/api/', generalLimiter);
 
 // Database connection
-mongoose.connect(process.env.MONGODB_URI);
+mongoose.connect(process.env.MONGODB_URI).catch((err) => {
+    console.error('MongoDB connection error:', err.message);
+    process.exit(1);
+});
 
 // Email transporter
 const transporter = nodemailer.createTransport({
@@ -220,11 +223,13 @@ const cached = async (key, ttlMs, loader) => {
 
 const extractJsonText = (text) => text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
 
-const withTimeout = (promise, ms, message = 'Request timed out') =>
-    Promise.race([
-        promise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
-    ]);
+const withTimeout = (promise, ms, message = 'Request timed out') => {
+    let timer;
+    const timeoutPromise = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+};
 
 const openRouterText = async (prompt, { json = false, maxTokens = 1200, temperature = 0.35, system } = {}) => {
     if (!process.env.OPENROUTER_API_KEY) {
@@ -404,7 +409,7 @@ const subscriptionSchema = new mongoose.Schema({
     date: { type: Date, default: Date.now },
     active: { type: Boolean, default: true }
 });
-const contactShema = new mongoose.Schema({
+const contactSchema = new mongoose.Schema({
     fname: String,
     lname: String,
     email: String,
@@ -446,7 +451,7 @@ const blogSchema = new mongoose.Schema({
 const User = mongoose.model('User', userSchema);
 const Course = mongoose.model('Course', courseSchema);
 const Subscription = mongoose.model('Subscription', subscriptionSchema);
-const Contact = mongoose.model('Contact', contactShema);
+const Contact = mongoose.model('Contact', contactSchema);
 const Admin = mongoose.model('Admin', adminSchema);
 const NotesSchema = mongoose.model('Notes', notesSchema);
 const ExamSchema = mongoose.model('Exams', examSchema);
@@ -1254,19 +1259,19 @@ app.post('/api/paypalwebhooks', async (req, res) => {
     switch (event_type) {
         case 'BILLING.SUBSCRIPTION.CANCELLED':
             const id = body['resource']['id'];
-            updateSubsciption(id, "Cancelled");
+            updateSubscription(id, "Cancelled");
             break;
         case 'BILLING.SUBSCRIPTION.EXPIRED':
             const id2 = body['resource']['id'];
-            updateSubsciption(id2, "Expired");
+            updateSubscription(id2, "Expired");
             break;
         case 'BILLING.SUBSCRIPTION.SUSPENDED':
             const id3 = body['resource']['id'];
-            updateSubsciption(id3, "Suspended");
+            updateSubscription(id3, "Suspended");
             break;
         case 'BILLING.SUBSCRIPTION.PAYMENT.FAILED':
             const id4 = body['resource']['id'];
-            updateSubsciption(id4, "Disabled Due To Payment Failure");
+            updateSubscription(id4, "Disabled Due To Payment Failure");
             break;
         case 'PAYMENT.SALE.COMPLETED':
             const id5 = body['resource']['billing_agreement_id'];
@@ -1289,17 +1294,6 @@ async function sendRenewEmail(id) {
         const userDetails = await User.findOne({ _id: userId });
         if (!userDetails) return;
 
-        const transporter = nodemailer.createTransport({
-            host: 'smtp.gmail.com',
-            port: 465,
-            service: 'gmail',
-            secure: true,
-            auth: {
-                user: process.env.EMAIL,
-                pass: process.env.PASSWORD,
-            },
-        });
-
         const mailOptions = {
             from: process.env.EMAIL,
             to: userDetails.email,
@@ -1313,8 +1307,8 @@ async function sendRenewEmail(id) {
     }
 }
 
-//UPDATE SUBSCRIPTION DETIALS
-async function updateSubsciption(id, subject) {
+//UPDATE SUBSCRIPTION DETAILS
+async function updateSubscription(id, subject) {
     try {
         const subscriptionDetails = await Subscription.findOne({ subscription: id });
         if (!subscriptionDetails) return;
@@ -1337,18 +1331,6 @@ async function updateSubsciption(id, subject) {
 
 //SEND CANCEL EMAIL
 async function sendCancelEmail(email, name, subject) {
-
-    const transporter = nodemailer.createTransport({
-        host: 'smtp.gmail.com',
-        port: 465,
-        service: 'gmail',
-        secure: true,
-        auth: {
-            user: process.env.EMAIL,
-            pass: process.env.PASSWORD,
-        },
-    });
-
     const Reactivate = process.env.WEBSITE_URL + "/pricing";
 
     const mailOptions = {
@@ -1359,7 +1341,6 @@ async function sendCancelEmail(email, name, subject) {
     };
 
     await transporter.sendMail(mailOptions);
-
 }
 
 //CANCEL PAYPAL SUBSCRIPTION
@@ -1561,6 +1542,7 @@ app.post('/api/razorapypending', authMiddleware, async (req, res) => {
         })
         .catch(error => {
             console.log('Error', error);
+            res.status(500).json({ success: false, message: 'Internal server error' });
         });
 
 });
