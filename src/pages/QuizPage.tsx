@@ -39,10 +39,11 @@ const QuizPage = () => {
 
         init();
 
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const setQuizResult = () => {
-        const half = quizQuestions.length;
+        const half = quizQuestions.length / 2;
         const scor = getScore();
         if (scor > half) {
             setPassed(true);
