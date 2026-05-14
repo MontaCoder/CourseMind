@@ -52,16 +52,26 @@ const Dashboard = () => {
     });
   }
 
-  const handleDeleteCourse = async (courseId: number) => {
+  const handleDeleteCourse = async (courseId: string) => {
     setIsLoading(true);
     const response = await api.post('/api/deletecourse', { courseId: courseId });
     if (response.data.success) {
+      setCourses((prev) => prev.filter((c) => c._id !== courseId));
+      setCourseProgress((prev) => {
+        const next = { ...prev };
+        delete next[courseId];
+        return next;
+      });
+      setTotalModules((prev) => {
+        const next = { ...prev };
+        delete next[courseId];
+        return next;
+      });
       setIsLoading(false);
       toast({
         title: "Course deleted",
         description: "The course has been deleted successfully.",
       });
-      location.reload();
     } else {
       setIsLoading(false);
       toast({
@@ -105,7 +115,9 @@ const Dashboard = () => {
 
   const handleScroll = useCallback(() => {
     if (!hasMore || loadingMore) return;
-    const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
+    const scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
+    const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
+    const clientHeight = document.documentElement.clientHeight || window.innerHeight;
     if (scrollTop + clientHeight >= scrollHeight - 100) {
       setPage((prevPage) => prevPage + 1);
     }
@@ -182,7 +194,7 @@ const Dashboard = () => {
                         className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500"
                       />
                       <div className="absolute top-2 right-2">
-                        <Badge variant={course.status === 'Completed' ? 'destructive' : 'secondary'}>
+                        <Badge variant={course.completed === true ? 'destructive' : 'secondary'}>
                           {course.completed === true ? 'Completed' : 'Pending'}
                         </Badge>
                       </div>
@@ -195,10 +207,10 @@ const Dashboard = () => {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent className="w-40">
                             <ShareOnSocial
-                              textToShare={sessionStorage.getItem('mName') + " shared you course on " + course.mainTopic}
+                              textToShare={(sessionStorage.getItem('mName') || 'Someone') + " shared you course on " + course.mainTopic}
                               link={websiteURL + '/shareable?id=' + course._id}
-                              linkTitle={sessionStorage.getItem('mName') + " shared you course on " + course.mainTopic}
-                              linkMetaDesc={sessionStorage.getItem('mName') + " shared you course on " + course.mainTopic}
+                              linkTitle={(sessionStorage.getItem('mName') || 'Someone') + " shared you course on " + course.mainTopic}
+                              linkMetaDesc={(sessionStorage.getItem('mName') || 'Someone') + " shared you course on " + course.mainTopic}
                               linkFavicon={appLogo}
                               noReferer
                             >
