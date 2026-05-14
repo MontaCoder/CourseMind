@@ -45,10 +45,12 @@ const Profile = () => {
   const [jsonData, setJsonData] = useState({});
 
   useEffect(() => {
-    window.addEventListener('beforeinstallprompt', (e) => {
+    const handler = (e: Event) => {
       e.preventDefault()
       setInstallPrompt(e)
-    })
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
   }, []);
 
 
@@ -320,7 +322,7 @@ const Profile = () => {
                     Active Paid Plan
                   </div>
                   :
-                  <div className="bg-gray-200 dark:gray-700 text-black dark:text-black text-xs rounded px-2 py-1 inline-flex items-center">
+                  <div className="bg-gray-200 dark:bg-gray-700 text-black dark:text-white text-xs rounded px-2 py-1 inline-flex items-center">
                     <ShieldCheck className="h-3 w-3 mr-1" />
                     Active Free Plan
                   </div>
