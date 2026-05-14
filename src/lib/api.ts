@@ -1,5 +1,6 @@
 import { serverURL } from '@/constants';
 import type { AuthSession } from '@/lib/api-types';
+import { toast } from 'sonner';
 
 type ApiResponse<T> = { data: T; status: number };
 type RequestBody = BodyInit | Record<string, unknown> | unknown[] | null | undefined;
@@ -21,11 +22,17 @@ const parseBody = (body?: RequestBody) => {
 };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<ApiResponse<T>> {
-  const response = await fetch(`${serverURL}${path}`, {
-    credentials: 'include',
-    ...init,
-    headers: { ...headers(init.body as RequestBody), ...init.headers },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${serverURL}${path}`, {
+      credentials: 'include',
+      ...init,
+      headers: { ...headers(init.body as RequestBody), ...init.headers },
+    });
+  } catch {
+    toast.error('Server unreachable. Please check your connection.');
+    throw new Error('Network error');
+  }
 
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;
@@ -66,7 +73,13 @@ export const setAuthData = (data: AuthData) => {
 export const clearAuthData = () => {
   authGeneration += 1;
   authHydration = null;
-  sessionStorage.clear();
+  sessionStorage.removeItem('token');
+  sessionStorage.removeItem('email');
+  sessionStorage.removeItem('mName');
+  sessionStorage.removeItem('auth');
+  sessionStorage.removeItem('uid');
+  sessionStorage.removeItem('type');
+  sessionStorage.removeItem('adminEmail');
 };
 
 // Helper to check if user is authenticated
