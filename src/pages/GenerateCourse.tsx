@@ -189,7 +189,7 @@ const GenerateCourse = () => {
                   {subtopics.length > 0 && (
                     <div className="mt-3 space-y-2">
                       {subtopics.map((item, index) => (
-                        <div key={item} className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                        <div key={index} className="flex items-center gap-2 p-2 bg-muted rounded-md">
                           <span className="text-sm">{item}</span>
                           <Button
                             type="button"
